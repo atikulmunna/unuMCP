@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.turbo/
+.next/
+
+# Logs
+*.log
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+desktop.ini
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Local-only tooling config & live-test artifacts
+.claude/settings.local.json
+.playwright-mcp/
+
+# Vendored spec fixtures for spikes (re-downloadable, large)
+spikes/specs/
+
+# Local-only planning & spec docs (project rule — keep untracked)
+unuMCP_SRS.md
+tasks.md
+CLAUDE.md
+
+spikes/out/

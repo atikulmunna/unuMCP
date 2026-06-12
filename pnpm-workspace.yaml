@@ -1,0 +1,22 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "spikes"
+overrides:
+  # Dedupe ioredis to one version so BullMQ's connection types match the
+  # instances we construct (P6-6); without this two copies (5.10.x via bullmq,
+  # 5.11.x direct) collide on the ConnectionOptions type.
+  ioredis: 5.11.1
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@swc/core': true
+  esbuild: true
+  # BullMQ's msgpackr uses this only as an optional native speedup; the pure-JS
+  # path works without it. Skip to keep the deps gate green (P6-6).
+  msgpackr-extract: false
+  prisma: true
+  # Next.js optional image-optimization dep; we don't use next/image, so skip
+  # its native build. Recording the decision keeps the deps gate green.
+  sharp: false
