@@ -1,0 +1,19 @@
+{
+  "name": "@unumcp/schema-gen",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@unumcp/openapi": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "vitest": "^2.1.0",
+    "zod": "^3.23.0"
+  }
+}
