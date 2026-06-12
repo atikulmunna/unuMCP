@@ -1,0 +1,279 @@
+// unuMCP data model — mirrors SRS §13 (+ v1.1 additions: ToolEndpoint,
+// RepairAttempt, TestResult, GenerationRun version/cost fields).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  DRAFT
+  SPEC_UPLOADED
+  SPEC_VALIDATED
+  ENDPOINTS_ANALYZED
+  TOOLS_PROPOSED
+  AWAITING_USER_APPROVAL
+  TOOLS_APPROVED
+  CODE_GENERATING
+  TEST_GENERATING
+  TEST_RUNNING
+  REPAIRING_FAILED_CODE
+  TESTS_PASSED
+  PACKAGING
+  COMPLETED
+  COMPLETED_WITH_WARNINGS
+  // failure states
+  SPEC_INVALID
+  GENERATION_FAILED
+  TESTS_FAILED
+  SANDBOX_FAILED
+  PACKAGE_FAILED
+  CANCELLED
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+}
+
+enum ValidationStatus {
+  valid
+  invalid
+}
+
+enum CreatedBy {
+  agent
+  user
+}
+
+enum ArtifactType {
+  source_file
+  test_file
+  archive
+  readme
+}
+
+enum GenerationStatus {
+  running
+  failed
+  passed
+  passed_with_warnings
+  cancelled
+}
+
+enum Actor {
+  user
+  agent
+  system
+}
+
+enum MappingKind {
+  one_to_one
+  merged
+  split
+}
+
+enum RepairOutcome {
+  passed
+  failed
+  no_change
+}
+
+enum TestStatus {
+  passed
+  failed
+  skipped
+  errored
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  projects     Project[]
+  auditEvents  AuditEvent[]
+}
+
+model Project {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      ProjectStatus       @default(DRAFT)
+  sourceType  String              @default("openapi_upload")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  specs       ApiSpec[]
+  endpoints   Endpoint[]
+  tools       ToolCandidate[]
+  artifacts   GeneratedArtifact[]
+  runs        GenerationRun[]
+  auditEvents AuditEvent[]
+
+  @@index([userId])
+}
+
+model ApiSpec {
+  id               String           @id @default(cuid())
+  projectId        String
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalFileUrl  String
+  parsedJson       Json?
+  openapiVersion   String?
+  title            String?
+  version          String?
+  baseUrl          String?
+  validationStatus ValidationStatus @default(invalid)
+  validationErrors Json?
+  detectedAuth     Json?
+  createdAt        DateTime         @default(now())
+
+  @@index([projectId])
+}
+
+model Endpoint {
+  id             String         @id @default(cuid())
+  projectId      String
+  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  method         String
+  path           String
+  operationId    String?
+  summary        String?
+  description    String?
+  tag            String?
+  requestSchema  Json?
+  responseSchema Json?
+  authRequired   Boolean        @default(false)
+  deprecated     Boolean        @default(false)
+  operationType  String         @default("unknown")
+  riskLevel      RiskLevel      @default(low)
+  toolLinks      ToolEndpoint[]
+  createdAt      DateTime       @default(now())
+
+  @@index([projectId])
+}
+
+model ToolCandidate {
+  id               String         @id @default(cuid())
+  projectId        String
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  description      String
+  inputSchema      Json
+  outputSchema     Json?
+  enabled          Boolean        @default(true)
+  approved         Boolean        @default(false)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  planVersion      Int            @default(1)
+  riskLevel        RiskLevel      @default(low)
+  createdBy        CreatedBy      @default(agent)
+  endpoints        ToolEndpoint[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([projectId])
+}
+
+model ToolEndpoint {
+  id              String        @id @default(cuid())
+  toolCandidateId String
+  toolCandidate   ToolCandidate @relation(fields: [toolCandidateId], references: [id], onDelete: Cascade)
+  endpointId      String
+  endpoint        Endpoint      @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+  mappingKind     MappingKind   @default(one_to_one)
+  note            String?
+
+  @@unique([toolCandidateId, endpointId])
+  @@index([endpointId])
+}
+
+model GeneratedArtifact {
+  id           String       @id @default(cuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  artifactType ArtifactType
+  path         String
+  contentUrl   String?
+  contentHash  String
+  createdAt    DateTime     @default(now())
+
+  @@index([projectId])
+}
+
+model GenerationRun {
+  id                 String           @id @default(cuid())
+  projectId          String
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status             GenerationStatus @default(running)
+  startedAt          DateTime         @default(now())
+  completedAt        DateTime?
+  errorMessage       String?
+  repairAttempts     Int              @default(0)
+  // reproducibility / compatibility metadata (v1.1)
+  llmModelId         String?
+  promptVersion      String?
+  mcpSdkVersion      String?
+  mcpProtocolVersion String?
+  // cost accounting (v1.1)
+  inputTokens        Int?
+  outputTokens       Int?
+  estimatedCostUsd   Decimal?         @db.Decimal(10, 4)
+  repairs            RepairAttempt[]
+  testResults        TestResult[]
+
+  @@index([projectId])
+}
+
+model RepairAttempt {
+  id              String        @id @default(cuid())
+  generationRunId String
+  generationRun   GenerationRun @relation(fields: [generationRunId], references: [id], onDelete: Cascade)
+  attemptNumber   Int
+  failureSummary  String
+  diff            String
+  outcome         RepairOutcome
+  createdAt       DateTime      @default(now())
+
+  @@index([generationRunId])
+}
+
+model TestResult {
+  id               String        @id @default(cuid())
+  generationRunId  String
+  generationRun    GenerationRun @relation(fields: [generationRunId], references: [id], onDelete: Cascade)
+  suite            String
+  status           TestStatus
+  durationMs       Int
+  failingTestCount Int           @default(0)
+  totalTestCount   Int           @default(0)
+  logExcerpt       String?
+  createdAt        DateTime      @default(now())
+
+  @@index([generationRunId])
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  eventType String
+  actor     Actor    @default(system)
+  summary   String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
