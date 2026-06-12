@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # The API end-to-end suite exercises real Prisma, so it needs Postgres.
+    # The job queue tests run inline (no REDIS_URL) and the sandbox tests use a
+    # fake runner, so no Redis/Docker services are required here.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: unumcp
+          POSTGRES_PASSWORD: unumcp
+          POSTGRES_DB: unumcp
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U unumcp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://unumcp:unumcp@localhost:5433/unumcp?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database schema
+        run: pnpm --filter @unumcp/db exec prisma db push --skip-generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Loose env mode lets Turbo pass DATABASE_URL through to the test tasks
+      # (the db + api suites read it); strict mode would strip it.
+      - name: Test
+        run: pnpm exec turbo run test --env-mode=loose
