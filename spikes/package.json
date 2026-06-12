@@ -1,0 +1,14 @@
+{
+  "name": "@unumcp/spikes",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@unumcp/openapi": "workspace:*",
+    "@unumcp/analysis": "workspace:*",
+    "@unumcp/schema-gen": "workspace:*",
+    "@unumcp/codegen": "workspace:*",
+    "@unumcp/sandbox": "workspace:*",
+    "@unumcp/llm": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0"
+  }
+}
