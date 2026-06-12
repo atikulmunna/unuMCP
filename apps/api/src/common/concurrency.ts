@@ -1,0 +1,23 @@
+/**
+ * Map over `items` running at most `limit` calls of `fn` at once, preserving
+ * input order in the results. Used to keep LLM fan-out polite (P2-5) without
+ * pulling in a dependency; a fuller batching/caching story is P2-6.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i] as T, i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
