@@ -1,0 +1,46 @@
+{
+  "name": "@unumcp/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch --env-file=.env -r @swc-node/register src/main.ts",
+    "start": "node --env-file=.env -r @swc-node/register src/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/passport": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@unumcp/analysis": "workspace:*",
+    "@unumcp/codegen": "workspace:*",
+    "@unumcp/db": "workspace:*",
+    "@unumcp/llm": "workspace:*",
+    "@unumcp/openapi": "workspace:*",
+    "@unumcp/sandbox": "workspace:*",
+    "@unumcp/security-scan": "workspace:*",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1",
+    "jszip": "^3.10.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.0.0",
+    "@swc-node/register": "^1.10.0",
+    "@swc/core": "^1.7.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "unplugin-swc": "^1.5.1",
+    "vitest": "^2.1.0"
+  }
+}
