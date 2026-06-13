@@ -1,3 +1,4 @@
+import { parseSse } from "./sse";
 import type {
   ApiSpec,
   ArtifactContent,
@@ -8,6 +9,7 @@ import type {
   Project,
   ProjectStatus,
   RepairAttempt,
+  SandboxLogEvent,
   SessionUser,
   TestResult,
   ToolCandidate,
@@ -179,6 +181,37 @@ export const api = {
         `/projects/${projectId}/test`,
       );
       return res?.results ?? [];
+    },
+    cancel: (projectId: string) =>
+      request<{ cancelled: boolean }>(`/projects/${projectId}/test/cancel`, { method: "POST" }),
+    // Live SSE log stream, consumed via fetch so the bearer token rides the
+    // Authorization header. Resolves when the stream ends (the `done` event).
+    stream: async (
+      projectId: string,
+      onEvent: (event: SandboxLogEvent) => void,
+      signal?: AbortSignal,
+    ): Promise<void> => {
+      const token = getToken();
+      const res = await fetch(`/api/projects/${projectId}/test/stream`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal,
+      });
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parsed = parseSse<SandboxLogEvent>(buf);
+          buf = parsed.rest;
+          for (const event of parsed.events) onEvent(event);
+        }
+      } catch {
+        // Aborted (cancel/unmount) or network drop — nothing to surface.
+      }
     },
   },
 

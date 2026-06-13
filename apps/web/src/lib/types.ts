@@ -143,6 +143,13 @@ export interface AuditEvent {
   createdAt: string;
 }
 
+export interface SandboxLogEvent {
+  type: "log" | "status" | "done";
+  phase?: "install" | "test";
+  chunk?: string;
+  status?: string;
+}
+
 export interface CompletionResult {
   status: ProjectStatus;
   warnings: string[];
