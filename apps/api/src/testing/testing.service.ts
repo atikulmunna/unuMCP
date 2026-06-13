@@ -8,13 +8,18 @@ import { ProjectStatus, TestStatus, type GenerationStatus } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { SANDBOX_RUNNER, type SandboxRunner } from "./sandbox-runner";
+import { LogBus } from "./log-bus";
 
 @Injectable()
 export class TestingService {
+  /** In-flight runs keyed by project, so a cancel request can abort one. */
+  private readonly active = new Map<string, AbortController>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     @Inject(SANDBOX_RUNNER) private readonly sandbox: SandboxRunner,
+    private readonly logBus: LogBus,
   ) {}
 
   /**
@@ -38,6 +43,8 @@ export class TestingService {
     }
 
     const dir = await mkdtemp(join(tmpdir(), "unumcp-sbx-"));
+    const controller = new AbortController();
+    this.active.set(projectId, controller);
     try {
       for (const a of artifacts) {
         const dest = join(dir, a.path);
@@ -49,15 +56,38 @@ export class TestingService {
         where: { id: projectId },
         data: { status: ProjectStatus.TEST_RUNNING },
       });
+      this.logBus.publish(projectId, { type: "status", status: "running" });
 
       const startedAt = Date.now();
-      const result = await this.sandbox.run(dir);
+      const result = await this.sandbox.run(dir, {
+        onLog: (phase, chunk) => this.logBus.publish(projectId, { type: "log", phase, chunk }),
+        signal: controller.signal,
+      });
       const durationMs = Date.now() - startedAt;
 
+      // A user cancel aborts the sandbox; classify it as cancelled, not failed.
+      if (controller.signal.aborted) {
+        return await this.recordCancelled(projectId, run.id);
+      }
       return await this.record(projectId, run.id, result, durationMs);
     } finally {
+      this.active.delete(projectId);
+      this.logBus.publish(projectId, { type: "done" });
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  /** Abort the in-flight test run for a project, if any (P4-8). */
+  cancel(projectId: string): { cancelled: boolean } {
+    const controller = this.active.get(projectId);
+    if (!controller) return { cancelled: false };
+    controller.abort();
+    return { cancelled: true };
+  }
+
+  /** A live stream of sandbox output + status for a project's test run (SSE). */
+  watch(projectId: string) {
+    return this.logBus.subscribe(projectId);
   }
 
   /** Latest run's test results (§14.6). */
@@ -134,6 +164,36 @@ export class TestingService {
       }),
     ]);
 
+    this.logBus.publish(projectId, { type: "status", status });
     return { status, summary, durationMs };
+  }
+
+  /** Persist a cancelled run: run → cancelled, project → CANCELLED (P4-8). */
+  private async recordCancelled(projectId: string, runId: string) {
+    await this.prisma.$transaction([
+      this.prisma.generationRun.update({
+        where: { id: runId },
+        data: {
+          status: "cancelled",
+          completedAt: new Date(),
+          errorMessage: "Test run cancelled by the user.",
+        },
+      }),
+      this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.CANCELLED },
+      }),
+      this.prisma.auditEvent.create({
+        data: {
+          projectId,
+          eventType: "tests_cancelled",
+          actor: "user",
+          summary: "Sandbox test run cancelled by the user.",
+        },
+      }),
+    ]);
+
+    this.logBus.publish(projectId, { type: "status", status: "cancelled" });
+    return { status: "cancelled" as const };
   }
 }

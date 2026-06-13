@@ -7,14 +7,30 @@ import type { SandboxResult } from "@unumcp/sandbox";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { SANDBOX_RUNNER, type SandboxRunner } from "../src/testing/sandbox-runner";
+import { LogBus } from "../src/testing/log-bus";
 
 let app: INestApplication;
 let prisma: PrismaService;
 const emails: string[] = [];
 
 // The fake sandbox returns whatever the current test sets — no Docker needed.
+// In "blockUntilAbort" mode it hangs until the run's signal aborts, so a cancel
+// request can be exercised deterministically.
 let nextResult: SandboxResult;
-const fakeRunner: SandboxRunner = { run: async () => nextResult };
+let runMode: "result" | "blockUntilAbort" = "result";
+const fakeRunner: SandboxRunner = {
+  run: async (_dir, options) => {
+    options?.onLog?.("test", "running tests...\n");
+    if (runMode === "blockUntilAbort") {
+      await new Promise<void>((resolve) => {
+        if (options?.signal?.aborted) return resolve();
+        options?.signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return { install: phase(true, "installed"), test: phase(false, "aborted") };
+    }
+    return nextResult;
+  },
+};
 
 function phase(ok: boolean, log: string, timedOut = false) {
   return { ok, exitCode: ok ? 0 : 1, log, timedOut };
@@ -189,5 +205,85 @@ describe("sandbox test execution (P4-3/4/7)", () => {
       .post(`/projects/${projectId}/test`)
       .set({ Authorization: `Bearer ${other}` });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("live logs + cancel (P4-8, NFR-008)", () => {
+  it("streams sandbox log events over SSE", async () => {
+    const token = await makeUser("stream");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await generatedProject(token);
+
+    // Open the SSE stream, then publish on a ticker until it has subscribed and
+    // received the events (the bus has no replay, so a late subscriber — the
+    // ownership guard does a DB lookup first — just catches the next tick).
+    const streamReq = request(app.getHttpServer()).get(`/projects/${projectId}/test/stream`).set(auth);
+    const bus = app.get(LogBus, { strict: false });
+    const ticker = setInterval(() => {
+      bus.publish(projectId, { type: "log", phase: "test", chunk: "hello sandbox" });
+      bus.publish(projectId, { type: "done" }); // completes the stream so the request ends
+    }, 40);
+    try {
+      const res = await streamReq;
+      expect(res.headers["content-type"]).toMatch(/event-stream/);
+      expect(res.text).toContain("hello sandbox");
+    } finally {
+      clearInterval(ticker);
+    }
+  }, 20_000);
+
+  it("enforces ownership on the stream route", async () => {
+    const owner = await makeUser("sowner");
+    const other = await makeUser("sintruder");
+    const projectId = await generatedProject(owner);
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/test/stream`)
+      .set({ Authorization: `Bearer ${other}` });
+    expect(res.status).toBe(404);
+  });
+
+  it("cancels a running test and marks the project CANCELLED", async () => {
+    const token = await makeUser("cancel");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await generatedProject(token);
+
+    runMode = "blockUntilAbort";
+    try {
+      // `.then()` dispatches the request now (supertest is otherwise lazy); the
+      // run hangs until cancelled, so this promise resolves only after the abort.
+      const runReq = request(app.getHttpServer())
+        .post(`/projects/${projectId}/test`)
+        .set(auth)
+        .then((r) => r);
+
+      // Poll cancel until it finds the in-flight run (its controller is registered
+      // as soon as the run starts) — avoids racing the run's startup.
+      let cancelled = false;
+      for (let i = 0; i < 100 && !cancelled; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        const c = await request(app.getHttpServer()).post(`/projects/${projectId}/test/cancel`).set(auth);
+        cancelled = c.body.cancelled === true;
+      }
+      expect(cancelled).toBe(true);
+
+      const runRes = await runReq;
+      expect(runRes.body.status).toBe("cancelled");
+
+      const project = await request(app.getHttpServer()).get(`/projects/${projectId}`).set(auth);
+      expect(project.body.status).toBe("CANCELLED");
+    } finally {
+      runMode = "result";
+    }
+  }, 20_000);
+
+  it("returns cancelled:false when no test is running", async () => {
+    const token = await makeUser("nocancel");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await generatedProject(token);
+    const res = await request(app.getHttpServer())
+      .post(`/projects/${projectId}/test/cancel`)
+      .set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body.cancelled).toBe(false);
   });
 });
