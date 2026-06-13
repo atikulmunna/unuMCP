@@ -37,6 +37,19 @@ export class GenerationController {
     return this.generation.getLatest(projectId);
   }
 
+  @Get("repairs")
+  repairs(@Param("projectId") projectId: string) {
+    return this.generation.getRepairs(projectId);
+  }
+
+  @Get("artifacts/:artifactId")
+  artifact(
+    @Param("projectId") projectId: string,
+    @Param("artifactId") artifactId: string,
+  ) {
+    return this.generation.getArtifactContent(projectId, artifactId);
+  }
+
   @Get("download")
   async download(@Param("projectId") projectId: string): Promise<StreamableFile> {
     const { filename, buffer } = await this.generation.downloadZip(projectId);

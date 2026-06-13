@@ -181,9 +181,51 @@ export class GenerationService {
     const artifacts = await this.prisma.generatedArtifact.findMany({
       where: { projectId },
       orderBy: { path: "asc" },
-      select: { path: true, artifactType: true, contentHash: true },
+      select: { id: true, path: true, artifactType: true, contentHash: true },
     });
     return { run, artifacts };
+  }
+
+  /**
+   * Read one generated artifact's content for in-browser preview (P4-9, §15.5).
+   * Scoped by `projectId` (on top of the controller's ownership guard) so an
+   * artifact id from another project can't be read. Generated sources never
+   * contain secrets (only `.env.example` placeholders), so the content is
+   * returned verbatim.
+   */
+  async getArtifactContent(projectId: string, artifactId: string) {
+    const artifact = await this.prisma.generatedArtifact.findFirst({
+      where: { id: artifactId, projectId },
+    });
+    if (!artifact?.contentUrl) {
+      throw new NotFoundException("Artifact not found.");
+    }
+    const content = await this.storage.read(artifact.contentUrl);
+    return { path: artifact.path, artifactType: artifact.artifactType, content };
+  }
+
+  /**
+   * Repair history for the latest run (P4-6/P4-9, §13.6b/§15.5): each attempt's
+   * diff, failure summary, and outcome, so the dashboard can show what the
+   * repair loop changed. Empty when nothing has been repaired.
+   */
+  async getRepairs(projectId: string) {
+    const run = await this.prisma.generationRun.findFirst({
+      where: { projectId },
+      orderBy: { startedAt: "desc" },
+    });
+    if (!run) return [];
+    return this.prisma.repairAttempt.findMany({
+      where: { generationRunId: run.id },
+      orderBy: { attemptNumber: "asc" },
+      select: {
+        attemptNumber: true,
+        failureSummary: true,
+        diff: true,
+        outcome: true,
+        createdAt: true,
+      },
+    });
   }
 
   /**

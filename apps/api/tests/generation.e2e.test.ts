@@ -243,6 +243,121 @@ describe("code generation (P3-9)", () => {
   });
 });
 
+describe("artifact preview + repair history (P4-9, §15.5)", () => {
+  it("serves a generated artifact's content for preview", async () => {
+    const token = await makeUser("preview");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await approvedProject(token);
+    await request(app.getHttpServer()).post(`/projects/${projectId}/generation`).set(auth);
+
+    const latest = await request(app.getHttpServer()).get(`/projects/${projectId}/generation`).set(auth);
+    // Every artifact now carries an id the UI can address.
+    const readme = latest.body.artifacts.find((a: any) => a.path === "README.md");
+    expect(readme.id).toBeTruthy();
+
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/artifacts/${readme.id}`)
+      .set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body.path).toBe("README.md");
+    expect(res.body.artifactType).toBe("readme");
+    expect(res.body.content).toContain("#"); // it's real markdown
+
+    // A source file round-trips too, and the content matches its stored hash.
+    const pkg = latest.body.artifacts.find((a: any) => a.path === "package.json");
+    const pkgRes = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/artifacts/${pkg.id}`)
+      .set(auth);
+    expect(() => JSON.parse(pkgRes.body.content)).not.toThrow();
+  });
+
+  it("returns 404 for an unknown artifact id", async () => {
+    const token = await makeUser("noart");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await approvedProject(token);
+    await request(app.getHttpServer()).post(`/projects/${projectId}/generation`).set(auth);
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/artifacts/does-not-exist`)
+      .set(auth);
+    expect(res.status).toBe(404);
+  });
+
+  it("does not serve an artifact id that belongs to another project", async () => {
+    const token = await makeUser("crossart");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectA = await approvedProject(token);
+    const projectB = await approvedProject(token);
+    await request(app.getHttpServer()).post(`/projects/${projectA}/generation`).set(auth);
+    await request(app.getHttpServer()).post(`/projects/${projectB}/generation`).set(auth);
+
+    const a = await request(app.getHttpServer()).get(`/projects/${projectA}/generation`).set(auth);
+    const artifactOfA = a.body.artifacts[0].id;
+    // Same owner, but request A's artifact via B's path — must 404 (scoped by projectId).
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectB}/generation/artifacts/${artifactOfA}`)
+      .set(auth);
+    expect(res.status).toBe(404);
+  });
+
+  it("enforces ownership on the artifact content route", async () => {
+    const owner = await makeUser("artowner");
+    const other = await makeUser("artintruder");
+    const projectId = await approvedProject(owner);
+    await request(app.getHttpServer())
+      .post(`/projects/${projectId}/generation`)
+      .set({ Authorization: `Bearer ${owner}` });
+    const latest = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation`)
+      .set({ Authorization: `Bearer ${owner}` });
+    const id = latest.body.artifacts[0].id;
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/artifacts/${id}`)
+      .set({ Authorization: `Bearer ${other}` });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns the repair history for the latest run", async () => {
+    const token = await makeUser("repairs");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await approvedProject(token);
+    await request(app.getHttpServer()).post(`/projects/${projectId}/generation`).set(auth);
+
+    const latest = await request(app.getHttpServer()).get(`/projects/${projectId}/generation`).set(auth);
+    const runId = latest.body.run.id;
+    // Seed an attempt directly (the live repair loop is LLM-gated; the endpoint is not).
+    await prisma.repairAttempt.create({
+      data: {
+        generationRunId: runId,
+        attemptNumber: 1,
+        failureSummary: "Tests 1 failed",
+        diff: "--- a/src/index.ts\n+++ b/src/index.ts\n-bad\n+good",
+        outcome: "passed",
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/repairs`)
+      .set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].attemptNumber).toBe(1);
+    expect(res.body[0].outcome).toBe("passed");
+    expect(res.body[0].diff).toContain("+good");
+  });
+
+  it("returns an empty repair history when nothing was repaired", async () => {
+    const token = await makeUser("norepairs");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await approvedProject(token);
+    await request(app.getHttpServer()).post(`/projects/${projectId}/generation`).set(auth);
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/repairs`)
+      .set(auth);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+});
+
 function hashByPath(artifacts: { path: string; contentHash: string }[]): Record<string, string> {
   return Object.fromEntries(artifacts.map((a) => [a.path, a.contentHash]));
 }
