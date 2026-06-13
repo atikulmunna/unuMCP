@@ -1,11 +1,13 @@
 import type {
   ApiSpec,
+  ArtifactContent,
   AuditEvent,
   AuthResult,
   CompletionResult,
   GenerationLatest,
   Project,
   ProjectStatus,
+  RepairAttempt,
   SessionUser,
   TestResult,
   ToolCandidate,
@@ -162,6 +164,10 @@ export const api = {
         method: "POST",
       }),
     latest: (projectId: string) => request<GenerationLatest | null>(`/projects/${projectId}/generation`),
+    artifact: (projectId: string, artifactId: string) =>
+      request<ArtifactContent>(`/projects/${projectId}/generation/artifacts/${artifactId}`),
+    repairs: (projectId: string) =>
+      request<RepairAttempt[]>(`/projects/${projectId}/generation/repairs`),
     download: (projectId: string) => download(`/projects/${projectId}/generation/download`),
   },
 

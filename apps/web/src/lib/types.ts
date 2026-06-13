@@ -87,10 +87,27 @@ export interface ToolCandidate {
   endpoints: ToolEndpointRef[];
 }
 
+export type ArtifactType = "source_file" | "test_file" | "archive" | "readme";
+
 export interface GenerationArtifact {
+  id: string;
   path: string;
-  artifactType: "source_file" | "test_file" | "archive" | "readme";
+  artifactType: ArtifactType;
   contentHash: string;
+}
+
+export interface ArtifactContent {
+  path: string;
+  artifactType: ArtifactType;
+  content: string;
+}
+
+export interface RepairAttempt {
+  attemptNumber: number;
+  failureSummary: string;
+  diff: string;
+  outcome: "passed" | "failed";
+  createdAt: string;
 }
 
 export interface GenerationRun {
