@@ -113,11 +113,14 @@ export class RepairService {
 
         let changed: RepairFile[];
         try {
-          const result = await this.llm.repair({
-            failureLog,
-            files,
-            maxTokens: this.config.maxTokens,
-          });
+          const result = await this.llm.repair(
+            {
+              failureLog,
+              files,
+              maxTokens: this.config.maxTokens,
+            },
+            { projectId },
+          );
           changed = result.files;
         } catch (err) {
           // LLM error or a rejected edit (e.g. it tried to touch a frozen test).

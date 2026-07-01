@@ -5,9 +5,11 @@ import { proposeTools } from "@unumcp/analysis";
 import type { ToolDraft } from "@unumcp/analysis";
 import { Prisma } from "@unumcp/db";
 import { detectPromptInjection } from "@unumcp/security-scan";
+import type { ToolProposalInput } from "@unumcp/llm";
 import { PrismaService } from "../prisma/prisma.service";
 import { LlmService } from "../llm/llm.service";
-import { mapWithConcurrency } from "../common/concurrency";
+import { chunk, mapWithConcurrency } from "../common/concurrency";
+import { proposalConfigFromEnv } from "./proposal.config";
 import type { UpdateToolInput } from "./schemas";
 
 const MUTATING = new Set(["create", "update", "delete", "upload"]);
@@ -39,10 +41,11 @@ export class ToolsService {
     const drafts = proposeTools(endpoints);
 
     // Resolve descriptions BEFORE opening the transaction so slow LLM calls never
-    // hold a DB transaction open. Bounded concurrency keeps the fan-out polite;
-    // batching/caching is the P2-6 refinement, background execution is P6-6.
+    // hold a DB transaction open. Descriptions are produced in batches (many tools
+    // per LLM call) run with bounded concurrency (P2-6, NFR-007b); background
+    // execution is P6-6. Any description the model omits falls back to the draft.
     const descriptions = this.llm.enabled
-      ? await mapWithConcurrency(drafts, 5, (d, i) => this.describe(d, endpoints[i]))
+      ? await this.describeBatched(projectId, drafts, endpoints)
       : drafts.map((d) => d.description);
 
     // Flag (don't block) untrusted spec text that looks like a prompt-injection
@@ -99,12 +102,34 @@ export class ToolsService {
     return this.list(projectId);
   }
 
-  /** Build the LLM proposal input for one draft and request a description. */
-  private describe(draft: ToolDraft, endpoint?: ExtractedEndpoint): Promise<string | null> {
+  /**
+   * Resolve all descriptions via the LLM in batches (P2-6): chunk the drafts,
+   * describe each chunk in one call, and run up to `concurrency` chunks at once.
+   * Results are realigned to draft order; a `null` (omitted/secret-shaped) falls
+   * back to the deterministic draft description. Each batch is one traced call.
+   */
+  private async describeBatched(
+    projectId: string,
+    drafts: ToolDraft[],
+    endpoints: (ExtractedEndpoint | undefined)[],
+  ): Promise<string[]> {
+    const cfg = proposalConfigFromEnv();
+    const inputs = drafts.map((d, i) => this.toProposalInput(d, endpoints[i]));
+    const batches = chunk(inputs, cfg.batchSize);
+    const results = await mapWithConcurrency(batches, cfg.concurrency, (batch) =>
+      this.llm.describeToolsBatch(batch, { projectId }),
+    );
+    // chunk() and mapWithConcurrency() both preserve order, so flattening realigns to `inputs`.
+    const flat = results.flat();
+    return drafts.map((d, i) => flat[i] ?? d.description);
+  }
+
+  /** Build the LLM proposal facts for one draft (name/schema stay deterministic elsewhere). */
+  private toProposalInput(draft: ToolDraft, endpoint?: ExtractedEndpoint): ToolProposalInput {
     const paramNames = (endpoint?.parameters ?? [])
       .filter((p) => p.in === "path" || p.in === "query")
       .map((p) => p.name);
-    return this.llm.describeTool({
+    return {
       toolName: draft.name,
       method: draft.method,
       path: draft.path,
@@ -113,7 +138,7 @@ export class ToolsService {
       paramNames,
       mutates: MUTATING.has(draft.operationType),
       riskLevel: draft.riskLevel,
-    });
+    };
   }
 
   /** List candidates with endpoint mapping + risk for the review UI (P2-10, NFR-009). */
