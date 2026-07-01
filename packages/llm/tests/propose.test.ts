@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseDescription, proposeToolDescription } from "../src/propose";
+import {
+  parseBatchDescriptions,
+  parseDescription,
+  proposeToolDescription,
+  proposeToolDescriptions,
+} from "../src/propose";
 import type { LlmClient, LlmCompletion, LlmRequest } from "../src/types";
 
 /** A canned client that returns a fixed body and records the request it saw. */
@@ -67,5 +72,75 @@ describe("proposeToolDescription", () => {
 
   it("parseDescription pulls a bare JSON object out of surrounding text", () => {
     expect(parseDescription('noise {"description":"ok"} trailing')).toBe("ok");
+  });
+});
+
+const inputs = [
+  { toolName: "create_issue", method: "post", path: "/issues", mutates: true, riskLevel: "medium" },
+  { toolName: "get_issue", method: "get", path: "/issues/{id}", riskLevel: "low" },
+];
+
+describe("proposeToolDescriptions (P2-6, batched)", () => {
+  it("describes a whole batch in ONE call and aligns results to input order", async () => {
+    const { client, seen } = fakeClient(
+      JSON.stringify({
+        descriptions: [
+          // Deliberately out of order to prove alignment is by name, not position.
+          { name: "get_issue", description: "Fetches an issue by id. Read-only." },
+          { name: "create_issue", description: "Creates an issue. Modifies data." },
+        ],
+      }),
+    );
+    const result = await proposeToolDescriptions(client, inputs);
+
+    expect(seen).toHaveLength(1); // one round-trip for the batch
+    expect(result.descriptions[0]).toMatch(/creates an issue/i);
+    expect(result.descriptions[1]).toMatch(/fetches an issue/i);
+    // Both tools' facts reach the model in the single request.
+    expect(seen[0]!.messages[1]!.content).toContain("create_issue");
+    expect(seen[0]!.messages[1]!.content).toContain("get_issue");
+  });
+
+  it("returns null for a tool the model omitted so the caller can fall back", async () => {
+    const { client } = fakeClient(
+      JSON.stringify({ descriptions: [{ name: "create_issue", description: "Creates an issue." }] }),
+    );
+    const result = await proposeToolDescriptions(client, inputs);
+    expect(result.descriptions[0]).toMatch(/creates an issue/i);
+    expect(result.descriptions[1]).toBeNull(); // get_issue missing → null
+  });
+
+  it("nulls out a single secret-shaped description without failing the batch", async () => {
+    const { client } = fakeClient(
+      JSON.stringify({
+        descriptions: [
+          { name: "create_issue", description: "Use ghp_0123456789abcdefghijklmnopqrstuvwx here." },
+          { name: "get_issue", description: "Fetches an issue by id." },
+        ],
+      }),
+    );
+    const result = await proposeToolDescriptions(client, inputs);
+    expect(result.descriptions[0]).toBeNull(); // secret dropped
+    expect(result.descriptions[1]).toMatch(/fetches an issue/i);
+  });
+
+  it("short-circuits an empty batch with no LLM call", async () => {
+    const { client, seen } = fakeClient("{}");
+    const result = await proposeToolDescriptions(client, []);
+    expect(result.descriptions).toEqual([]);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("parseBatchDescriptions builds a name→description map and skips malformed rows", () => {
+    const map = parseBatchDescriptions(
+      '{"descriptions":[{"name":"a","description":"A"},{"name":"b"},{"description":"no name"}]}',
+    );
+    expect(map.get("a")).toBe("A");
+    expect(map.has("b")).toBe(false);
+    expect(map.size).toBe(1);
+  });
+
+  it("parseBatchDescriptions rejects a response without a descriptions array", () => {
+    expect(() => parseBatchDescriptions('{"foo":1}')).toThrow(/descriptions/i);
   });
 });

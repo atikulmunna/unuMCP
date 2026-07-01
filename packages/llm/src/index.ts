@@ -1,7 +1,12 @@
 export { NimClient, NIM_DEFAULT_BASE_URL } from "./nim-client";
 export type { NimClientOptions } from "./nim-client";
-export { proposeToolDescription, parseDescription } from "./propose";
-export type { ToolProposalInput, ToolProposal } from "./propose";
+export {
+  proposeToolDescription,
+  proposeToolDescriptions,
+  parseDescription,
+  parseBatchDescriptions,
+} from "./propose";
+export type { ToolProposalInput, ToolProposal, BatchToolProposal } from "./propose";
 export { repairCode, parseRepairFiles } from "./repair";
 export type { RepairInput, RepairResult, RepairFile } from "./repair";
 export { diffLines, unifiedDiff } from "./diff";
