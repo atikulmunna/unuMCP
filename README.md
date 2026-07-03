@@ -93,7 +93,7 @@ docker compose up -d
 # 3. Configure env for the API
 cp .env.example apps/api/.env
 #   then edit apps/api/.env — at minimum set DATABASE_URL and JWT_SECRET
-#   (NVIDIA_API_KEY and REDIS_URL are optional; see below)
+#   (an LLM key — GEMINI_API_KEY or NVIDIA_API_KEY — and REDIS_URL are optional; see below)
 
 # 4. Apply the database schema.
 #   Prisma reads DATABASE_URL from the environment (NOT apps/api/.env), and it
@@ -119,9 +119,14 @@ The API loads `apps/api/.env` (via Node's `--env-file`). Copy `.env.example` and
 | `DATABASE_URL` | **yes** | `postgresql://unumcp:unumcp@localhost:5433/unumcp` | Postgres connection (Prisma) |
 | `JWT_SECRET` | **yes** | — | Signs/verifies auth tokens |
 | `PORT` | no | `3001` | API listen port |
-| `NVIDIA_API_KEY` | no | — | NVIDIA NIM key. **Absent ⇒ LLM features disabled** (deterministic fallback, no repair). `NIM_API_KEY` is also accepted |
+| `GEMINI_API_KEY` | no | — | Google Gemini key (free tier via AI Studio). Auto-selects the Gemini provider. `GOOGLE_API_KEY` also accepted |
+| `GEMINI_MODEL` | no | `gemini-3.5-flash` | Gemini model id (via its OpenAI-compatible endpoint) |
+| `NVIDIA_API_KEY` | no | — | NVIDIA NIM key. `NIM_API_KEY` also accepted |
 | `NIM_MODEL` | no | `meta/llama-3.3-70b-instruct` | NIM model id (OpenAI-compatible chat) |
+| `LLM_PROVIDER` | no | auto | Force the provider: `gemini` or `nim`. Default auto-detects from whichever key is set (Gemini preferred). **No key ⇒ LLM features disabled** (deterministic fallback, no repair) |
 | `LLM_DISABLED` | no | — | Set `true` to force-disable the LLM even with a key |
+| `PROPOSAL_BATCH_SIZE` | no | `5` | Tools described per LLM call (batched proposal, P2-6) |
+| `PROPOSAL_CONCURRENCY` | no | `3` | Description batches in flight at once |
 | `REDIS_URL` | no | — | **Absent ⇒ jobs run inline.** Set to enable the durable BullMQ queue |
 | `JOBS_INLINE` | no | — | Set `true` to force inline execution even with `REDIS_URL` |
 | `JOB_ATTEMPTS` | no | `3` | BullMQ retry attempts per job |
@@ -190,5 +195,5 @@ Notes:
 
 - **Jobs are opt-in durable.** With no `REDIS_URL`, generation/test/repair run inline in-request — fine for dev and CI. Set `REDIS_URL` to route them through BullMQ so they survive restarts; a boot-time reconciler fails any run orphaned by a crash (stale > 5 min) so the pipeline never hangs.
 - **The repair loop runs on the queue.** A clean test failure triggers up to `MAX_REPAIR_ATTEMPTS` passes (LLM fix → sandbox rerun). On exhaustion the project settles on `TESTS_FAILED` — never a silent success — and the user may still download partial output, with warnings embedded.
-- **NIM catalog churns.** Model ids reach end-of-life periodically; pin a model but be ready to swap `NIM_MODEL`.
+- **The LLM is provider-agnostic.** Any OpenAI-compatible backend works behind one `LlmClient` seam. Set `GEMINI_API_KEY` (Google AI Studio free tier) or `NVIDIA_API_KEY` (NIM); the provider auto-selects, or force it with `LLM_PROVIDER`. Model ids churn (NIM catalog EOLs, new Gemini releases) — pin a model but be ready to swap `GEMINI_MODEL`/`NIM_MODEL`.
 - **Local storage for MVP.** Artifacts are written under `STORAGE_DIR` (temp dir by default); the storage layer is abstracted so an object store can replace it without touching callers.

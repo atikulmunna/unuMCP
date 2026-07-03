@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
+  GeminiClient,
   NimClient,
   proposeToolDescription,
   proposeToolDescriptions,
@@ -11,20 +12,42 @@ import {
 } from "@unumcp/llm";
 import type { LlmTraceContext, LlmTraceEntry, LlmTraceService } from "./llm-trace.service";
 
+export type LlmProvider = "nim" | "gemini";
+
 export interface LlmConfig {
   enabled: boolean;
+  /** Which OpenAI-compatible backend to talk to. Defaults to "nim". */
+  provider?: LlmProvider;
   model: string;
   apiKey?: string;
 }
 
-const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
+const NIM_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
+const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
 
-/** Resolve LLM config from env. Disabled when no key is present (or opted out). */
+/**
+ * Resolve LLM config from env. The provider is chosen by `LLM_PROVIDER` when set,
+ * otherwise auto-detected from whichever key is present (Gemini preferred, since
+ * its free tier is the common case). Disabled when no key is present or opted out.
+ */
 export function llmConfigFromEnv(env: NodeJS.ProcessEnv = process.env): LlmConfig {
-  const apiKey = env.NVIDIA_API_KEY ?? env.NIM_API_KEY;
+  const geminiKey = env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY;
+  const nimKey = env.NVIDIA_API_KEY ?? env.NIM_API_KEY;
+  const provider: LlmProvider =
+    env.LLM_PROVIDER === "nim" || env.LLM_PROVIDER === "gemini"
+      ? env.LLM_PROVIDER
+      : geminiKey
+        ? "gemini"
+        : "nim";
+  const apiKey = provider === "gemini" ? geminiKey : nimKey;
+  const model =
+    provider === "gemini"
+      ? (env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL)
+      : (env.NIM_MODEL ?? NIM_DEFAULT_MODEL);
   return {
     enabled: Boolean(apiKey) && env.LLM_DISABLED !== "true",
-    model: env.NIM_MODEL ?? DEFAULT_MODEL,
+    provider,
+    model,
     apiKey,
   };
 }
@@ -49,7 +72,9 @@ export class LlmService {
     this.client =
       client ??
       (config.enabled && config.apiKey
-        ? new NimClient({ apiKey: config.apiKey, model: config.model })
+        ? config.provider === "gemini"
+          ? new GeminiClient({ apiKey: config.apiKey, model: config.model })
+          : new NimClient({ apiKey: config.apiKey, model: config.model })
         : null);
   }
 
