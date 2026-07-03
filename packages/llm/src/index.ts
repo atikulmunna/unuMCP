@@ -1,5 +1,9 @@
+export { OpenAiCompatibleClient } from "./openai-compatible";
+export type { OpenAiCompatibleOptions } from "./openai-compatible";
 export { NimClient, NIM_DEFAULT_BASE_URL } from "./nim-client";
 export type { NimClientOptions } from "./nim-client";
+export { GeminiClient, GEMINI_DEFAULT_BASE_URL } from "./gemini-client";
+export type { GeminiClientOptions } from "./gemini-client";
 export {
   proposeToolDescription,
   proposeToolDescriptions,
