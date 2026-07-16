@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>unuMCP — Live demo (on request)</title>
+  <meta name="description" content="The unuMCP live demo runs on an on-demand box kept offline to save cost. Request a live walkthrough from the author." />
+  <style>
+    :root {
+      --paper: #f4f0e8;
+      --paper-2: #fbf9f3;
+      --ink: #211e19;
+      --muted: #8a8276;
+      --hair: #e4ded2;
+      --clay: #bf4a2e;
+      --clay-ink: #fdf6f2;
+      --green: #3f7d54;
+      --amber: #c58a2a;
+      --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+      --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #191713; --paper-2: #221f19; --ink: #ece7dc; --muted: #9d9482;
+        --hair: #34302a; --clay: #e0674a; --clay-ink: #1b120e;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--serif); color: var(--ink); background: var(--paper);
+      min-height: 100%; display: grid; place-items: center; padding: 24px;
+      position: relative; overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* Dimmed, blurred screenshot backdrop */
+    .backdrop {
+      position: fixed; inset: 0; z-index: 0;
+      background: url('unumcp.png') center top / cover no-repeat;
+      filter: blur(7px) grayscale(28%) brightness(0.82) saturate(0.9);
+      transform: scale(1.08); opacity: 0.5;
+    }
+    .backdrop::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(120% 90% at 50% 0%, transparent 0%, var(--paper) 78%);
+    }
+    @media (prefers-color-scheme: dark) { .backdrop { opacity: 0.3; } }
+
+    .card {
+      position: relative; z-index: 1; width: min(560px, 100%);
+      background: color-mix(in srgb, var(--paper-2) 88%, transparent);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--hair); border-radius: 18px;
+      padding: 40px clamp(24px, 5vw, 48px);
+      box-shadow: 0 24px 60px -28px rgba(30,22,14,0.45), 0 2px 0 rgba(255,255,255,0.4) inset;
+      animation: rise 0.7s cubic-bezier(.2,.7,.2,1) both;
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+
+    .brand { display: flex; align-items: center; gap: 8px; font-family: var(--mono);
+      font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .brand b { color: var(--ink); font-weight: 700; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--clay); display: inline-block; }
+
+    .status {
+      margin-top: 26px; display: inline-flex; align-items: center; gap: 9px;
+      font-family: var(--mono); font-size: 12.5px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--hair));
+      background: color-mix(in srgb, var(--amber) 10%, transparent);
+      padding: 6px 12px; border-radius: 999px;
+    }
+    .pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--amber); position: relative; }
+    .pulse::before { content: ''; position: absolute; inset: -4px; border-radius: 50%;
+      border: 2px solid var(--amber); animation: ping 1.8s cubic-bezier(0,0,.2,1) infinite; }
+    @keyframes ping { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.9); opacity: 0; } }
+
+    h1 { font-size: clamp(30px, 6vw, 40px); line-height: 1.08; margin: 18px 0 0;
+      letter-spacing: -0.01em; font-weight: 600; }
+    .lede { color: var(--muted); font-size: 17px; line-height: 1.55; margin-top: 14px; max-width: 46ch; }
+
+    .console { margin-top: 26px; border: 1px solid var(--hair); border-radius: 12px;
+      background: color-mix(in srgb, var(--paper) 60%, transparent); overflow: hidden; }
+    .console .row { display: grid; grid-template-columns: 18px 108px 1fr; gap: 10px; align-items: center;
+      font-family: var(--mono); font-size: 13px; padding: 11px 14px; }
+    .console .row + .row { border-top: 1px solid var(--hair); }
+    .console .k { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+    .console .v { color: var(--ink); }
+    .console .v.good { color: var(--green); }
+    .console .led { width: 8px; height: 8px; border-radius: 50%; }
+    .led.off { background: var(--amber); } .led.ok { background: var(--green); }
+
+    /* Power toggle (the app's switch motif) */
+    .switchwrap { margin-top: 26px; display: flex; align-items: center; gap: 14px; }
+    .switch { --w: 62px; --h: 34px; width: var(--w); height: var(--h); border-radius: 999px;
+      border: 1px solid var(--hair); background: color-mix(in srgb, var(--ink) 12%, var(--paper));
+      position: relative; cursor: pointer; flex: none; transition: background .3s ease; padding: 0; }
+    .switch .knob { position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--paper-2); box-shadow: 0 2px 6px rgba(0,0,0,.25); transition: left .32s cubic-bezier(.5,1.6,.4,1); }
+    .switch.on { background: var(--green); }
+    .switch.on .knob { left: calc(var(--w) - 29px); }
+    .switch.shake { animation: shake .4s; }
+    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+    .switchlabel { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+    .switchlabel b { color: var(--ink); font-weight: 600; }
+
+    .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .btn { font-family: var(--mono); font-size: 13.5px; letter-spacing: .02em; text-decoration: none;
+      padding: 13px 20px; border-radius: 11px; border: 1px solid transparent; transition: transform .12s ease, filter .2s ease; }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--clay); color: var(--clay-ink); font-weight: 600; }
+    .btn.primary:hover { filter: brightness(1.06); }
+    .btn.ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
+    .btn.ghost:hover { border-color: var(--muted); }
+
+    .foot { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .foot code { font-family: var(--mono); font-size: 12px; background: color-mix(in srgb, var(--ink) 8%, transparent);
+      padding: 1px 6px; border-radius: 5px; }
+
+    .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
+      z-index: 3; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 13px;
+      padding: 12px 18px; border-radius: 10px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.5);
+      opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; max-width: 90vw; text-align: center; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+
+  <main class="card">
+    <div class="brand"><span>unu</span><span class="dot"></span><b>mcp</b><span style="margin-left:6px">· openapi → mcp</span></div>
+
+    <div class="status"><span class="pulse"></span> Demo offline · on-demand</div>
+
+    <h1>The live demo is powered down &mdash; on purpose.</h1>
+    <p class="lede">
+      unuMCP runs generated code in a real <b>Docker sandbox</b>, so the demo lives on a
+      cloud box that can't be free 24/7. It's kept switched <b>off to keep hosting near $0</b>,
+      and spun up only when someone wants to see it.
+    </p>
+
+    <div class="console" role="group" aria-label="server status">
+      <div class="row"><span class="led off"></span><span class="k">server</span><span class="v">offline (on-demand)</span></div>
+      <div class="row"><span class="led off"></span><span class="k">reason</span><span class="v">keeping cloud cost ≈ $0</span></div>
+      <div class="row"><span class="led ok"></span><span class="k">wake time</span><span class="v good">~30 seconds on request</span></div>
+    </div>
+
+    <div class="switchwrap">
+      <button class="switch" id="pwr" aria-label="Power on the demo server"><span class="knob"></span></button>
+      <span class="switchlabel">Try the switch &mdash; <b>only the author can flip it.</b></span>
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" id="email" href="mailto:atikul.munna@northsouth.edu?subject=unuMCP%20live%20demo%20request&body=Hi%20Atikul%2C%20I%27d%20love%20a%20live%20walkthrough%20of%20unuMCP.">Request a live walkthrough</a>
+      <a class="btn ghost" href="https://github.com/atikulmunna/unuMCP">View the source</a>
+    </div>
+
+    <p class="foot">
+      Prefer to browse first? The <a href="https://github.com/atikulmunna/unuMCP#readme">README</a> has a full
+      screenshot and a <code>How it works</code> walkthrough of the entire pipeline.
+    </p>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    (function () {
+      var pwr = document.getElementById('pwr');
+      var toast = document.getElementById('toast');
+      var email = document.getElementById('email');
+      var tHide;
+      var lines = [
+        "Nice try — this switch is the author's to flip. Drop them a line 👇",
+        "Access denied: only the author can boot the server. Email away 👇",
+        "It wants to wake up… but needs the author's go. Request a run 👇"
+      ];
+      var i = 0;
+      function showToast(msg) {
+        toast.textContent = msg; toast.classList.add('show');
+        clearTimeout(tHide); tHide = setTimeout(function () { toast.classList.remove('show'); }, 3200);
+      }
+      pwr.addEventListener('click', function () {
+        pwr.classList.add('on');
+        setTimeout(function () {
+          pwr.classList.remove('on'); pwr.classList.add('shake');
+          setTimeout(function () { pwr.classList.remove('shake'); }, 400);
+          showToast(lines[i % lines.length]); i++;
+          email.style.transition = 'transform .18s ease';
+          email.style.transform = 'scale(1.05)';
+          setTimeout(function () { email.style.transform = 'none'; }, 260);
+        }, 620);
+      });
+    })();
+  </script>
+</body>
+</html>
