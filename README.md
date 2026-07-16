@@ -4,6 +4,10 @@ Turn an **OpenAPI specification** into a working, tested **TypeScript MCP server
 
 You upload a spec; unuMCP analyses the endpoints, proposes tools (names, input schemas, risk levels), lets you approve them, generates a complete MCP server project, runs its tests in an isolated Docker sandbox, repairs failing code, and hands back a downloadable ZIP — README and `.env.example` included, secrets never.
 
+![unuMCP dashboard — the full build pipeline for one project](assets/unumcp-dashboard.png)
+
+> One project's workbench: spec validated, tools proposed and approved (descriptions authored live by the LLM), a typed server generated, its suite passing **8/8** in a `--network none` sandbox, and a packaged download — with an append-only **activity trail** on the left that records every stage, including each internal LLM call (`propose_tool_descriptions_batch`). Captured from a live deploy on AWS (see [Deployment](#deployment)).
+
 ---
 
 ## Table of contents
@@ -16,7 +20,9 @@ You upload a spec; unuMCP analyses the endpoints, proposes tools (names, input s
 - [Environment variables](#environment-variables)
 - [Running the apps](#running-the-apps)
 - [Testing](#testing)
+- [Observability](#observability)
 - [Security posture](#security-posture)
+- [Deployment](#deployment)
 - [Operational notes](#operational-notes)
 
 ---
@@ -41,8 +47,9 @@ Upload OpenAPI spec
 Design principles worth knowing before you read the code:
 
 - **Determinism first.** All *structural* artifacts (project scaffold, handler wiring, env detection, tests) are generated deterministically. The LLM is used **only** for prose (tool descriptions) and for repair edits — never to produce structural code. The platform runs end-to-end with the LLM disabled (you just get fallback descriptions and no repair).
-- **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam; the current implementation targets **NVIDIA NIM** (OpenAI-compatible). See [Environment variables](#environment-variables).
+- **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam over any OpenAI-compatible backend. It ships with **Google Gemini** (free tier) and **NVIDIA NIM**, auto-selected from whichever key is set. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
 - **Tests are frozen during repair.** The repair loop may edit implementation files only; it can never weaken a test to force a pass (enforced by both the prompt and the parser).
+- **Every internal LLM call is traced.** Each agent tool call (`propose_tool_descriptions_batch`, `repair_code`) is recorded as an audit event with token counts, and its cost rolls up into per-run and platform metrics — secrets redacted throughout.
 
 ## Architecture
 
@@ -53,7 +60,7 @@ Design principles worth knowing before you read the code:
 | Database | **PostgreSQL 16** via **Prisma** | Projects, runs, tools, test results, repair attempts, audit log |
 | Background jobs | **BullMQ + Redis** (optional) | Long-running generation/test/repair survive restarts; falls back to inline |
 | Sandbox | **Docker** two-phase runner | Phase 1 installs (network on); Phase 2 tests with `--network none` + resource caps |
-| LLM | **NVIDIA NIM** (OpenAI-compatible), via `@unumcp/llm` | Provider-agnostic; optional — platform degrades gracefully without it |
+| LLM | **Google Gemini / NVIDIA NIM** (OpenAI-compatible), via `@unumcp/llm` | Provider-agnostic + auto-selected; optional — platform degrades gracefully without it |
 | Monorepo | **pnpm workspaces + Turborepo** | Shared `packages/*`, cached `build`/`test`/`typecheck` |
 
 ## Repository layout
@@ -69,7 +76,7 @@ packages/
   codegen/        Deterministic TypeScript MCP server generation (project, handlers, tests, README, .env.example)
   sandbox/        Two-phase Docker sandbox runner + Vitest summary parser
   security-scan/  Secret redaction, static scan of generated code, prompt-injection detection
-  llm/            Provider-agnostic LLM client (NVIDIA NIM): tool-description proposal + code repair
+  llm/            Provider-agnostic LLM client (Gemini / NVIDIA NIM): batched tool-description proposal + code repair
   db/             Prisma schema + generated client
 ```
 
@@ -77,7 +84,7 @@ packages/
 
 ## Prerequisites
 
-- **Node.js ≥ 20**
+- **Node.js ≥ 22.13** (required by pnpm 11.5.1)
 - **pnpm 11.5.1** (`corepack enable` will pin it from `packageManager`)
 - **Docker** — required both for local Postgres/Redis (`docker compose`) **and** for the test sandbox that runs a generated server's tests
 
@@ -181,6 +188,14 @@ Notes:
 - The **real-Redis queue round-trip** test is opt-in: it only runs when `REDIS_URL` is set (the default suite runs jobs inline).
 - The **real Docker sandbox** path is validated via spikes and the testing e2e; unit/e2e tests use an injectable fake sandbox so they don't require Docker.
 
+## Observability
+
+Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper later):
+
+- **Structured request logs + trace ids.** One JSON line per HTTP request (`requestId`, method, path, status, `durationMs`); errors carry a `correlationId` that links the client envelope to the server log.
+- **Metrics** at `GET /metrics` (JWT-scoped to the caller): projects created, specs parsed, servers generated, generation success rate, test pass rate, average generation time, repair counts, failed sandbox runs, and **LLM cost** (`totalInputTokens` / `totalOutputTokens` / `totalEstimatedCostUsd`).
+- **Per-call LLM trace (FR-031).** Every internal agent tool call is an `llm_tool_call` audit event carrying an input/output summary, token counts, latency, and any error — all secret-redacted. Proposal and repair token usage rolls up onto the `GenerationRun` and into the metrics cost (free-tier models estimate to `$0`; the price table is per-model).
+
 ## Security posture
 
 - **Human approval gate** before any code is generated; high-risk tools (destructive verbs) are disabled by default.
@@ -190,6 +205,19 @@ Notes:
 - **Secret redaction** across logs, error envelopes, and persisted sandbox output.
 - **Sanitized error responses**: a single exception filter returns a structured envelope with a correlation id; 5xx bodies are generic (details stay server-side).
 - **Rate limiting** on the API (per-IP token buckets).
+
+## Deployment
+
+The platform runs generated code in a **Docker sandbox**, so it needs a host with a real Docker daemon — managed PaaS free tiers that disallow Docker-in-Docker (Render/Railway) can't run the test stage. The included kit deploys the whole stack — API, web, Postgres, and the sandbox — onto **one small AWS box**, fully scripted and on-demand:
+
+```bash
+bash deploy/provision.sh        # launch + self-install an SSM-managed t4g.small (zero inbound ports)
+bash deploy/manage.sh url       # print the free Cloudflare tunnel URL once it's up
+bash deploy/manage.sh stop      # on-demand: stop when idle (billing drops to disk only)
+bash deploy/manage.sh teardown  # delete everything ($0)
+```
+
+Postgres runs in a container, jobs run inline (no Redis), the LLM is Gemini's free tier, and the public URL is a free `*.trycloudflare.com` quick tunnel (no Cloudflare account, no open ports). Secrets are read from `apps/api/.env` and injected at launch only — never committed. Full runbook, costs, and the stable-URL upgrade: [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
 
 ## Operational notes
 
