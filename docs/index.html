@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>unuMCP — Live demo (on request)</title>
+  <title>unuMCP: Live demo (on request)</title>
   <meta name="description" content="The unuMCP live demo runs on an on-demand box kept offline to save cost. Request a live walkthrough from the author." />
   <style>
     :root {
@@ -89,20 +89,6 @@
     .console .led { width: 8px; height: 8px; border-radius: 50%; }
     .led.off { background: var(--amber); } .led.ok { background: var(--green); }
 
-    /* Power toggle (the app's switch motif) */
-    .switchwrap { margin-top: 26px; display: flex; align-items: center; gap: 14px; }
-    .switch { --w: 62px; --h: 34px; width: var(--w); height: var(--h); border-radius: 999px;
-      border: 1px solid var(--hair); background: color-mix(in srgb, var(--ink) 12%, var(--paper));
-      position: relative; cursor: pointer; flex: none; transition: background .3s ease; padding: 0; }
-    .switch .knob { position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
-      background: var(--paper-2); box-shadow: 0 2px 6px rgba(0,0,0,.25); transition: left .32s cubic-bezier(.5,1.6,.4,1); }
-    .switch.on { background: var(--green); }
-    .switch.on .knob { left: calc(var(--w) - 29px); }
-    .switch.shake { animation: shake .4s; }
-    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
-    .switchlabel { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
-    .switchlabel b { color: var(--ink); font-weight: 600; }
-
     .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
     .btn { font-family: var(--mono); font-size: 13.5px; letter-spacing: .02em; text-decoration: none;
       padding: 13px 20px; border-radius: 11px; border: 1px solid transparent; transition: transform .12s ease, filter .2s ease; }
@@ -111,16 +97,6 @@
     .btn.primary:hover { filter: brightness(1.06); }
     .btn.ghost { background: transparent; color: var(--ink); border-color: var(--hair); }
     .btn.ghost:hover { border-color: var(--muted); }
-
-    .foot { margin-top: 26px; font-size: 13px; color: var(--muted); line-height: 1.5; }
-    .foot code { font-family: var(--mono); font-size: 12px; background: color-mix(in srgb, var(--ink) 8%, transparent);
-      padding: 1px 6px; border-radius: 5px; }
-
-    .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px);
-      z-index: 3; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 13px;
-      padding: 12px 18px; border-radius: 10px; box-shadow: 0 12px 30px -10px rgba(0,0,0,.5);
-      opacity: 0; pointer-events: none; transition: opacity .25s ease, transform .25s ease; max-width: 90vw; text-align: center; }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -131,7 +107,7 @@
 
     <div class="status"><span class="pulse"></span> Demo offline · on-demand</div>
 
-    <h1>The live demo is powered down &mdash; on purpose.</h1>
+    <h1>The live demo is currently powered down.</h1>
     <p class="lede">
       unuMCP runs generated code in a real <b>Docker sandbox</b>, so the demo lives on a
       cloud box that can't be free 24/7. It's kept switched <b>off to keep hosting near $0</b>,
@@ -144,52 +120,11 @@
       <div class="row"><span class="led ok"></span><span class="k">wake time</span><span class="v good">~30 seconds on request</span></div>
     </div>
 
-    <div class="switchwrap">
-      <button class="switch" id="pwr" aria-label="Power on the demo server"><span class="knob"></span></button>
-      <span class="switchlabel">Try the switch &mdash; <b>only the author can flip it.</b></span>
-    </div>
-
     <div class="cta">
       <a class="btn primary" id="email" href="mailto:atikul.munna@northsouth.edu?subject=unuMCP%20live%20demo%20request&body=Hi%20Atikul%2C%20I%27d%20love%20a%20live%20walkthrough%20of%20unuMCP.">Request a live walkthrough</a>
       <a class="btn ghost" href="https://github.com/atikulmunna/unuMCP">View the source</a>
     </div>
 
-    <p class="foot">
-      Prefer to browse first? The <a href="https://github.com/atikulmunna/unuMCP#readme">README</a> has a full
-      screenshot and a <code>How it works</code> walkthrough of the entire pipeline.
-    </p>
   </main>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script>
-    (function () {
-      var pwr = document.getElementById('pwr');
-      var toast = document.getElementById('toast');
-      var email = document.getElementById('email');
-      var tHide;
-      var lines = [
-        "Nice try — this switch is the author's to flip. Drop them a line 👇",
-        "Access denied: only the author can boot the server. Email away 👇",
-        "It wants to wake up… but needs the author's go. Request a run 👇"
-      ];
-      var i = 0;
-      function showToast(msg) {
-        toast.textContent = msg; toast.classList.add('show');
-        clearTimeout(tHide); tHide = setTimeout(function () { toast.classList.remove('show'); }, 3200);
-      }
-      pwr.addEventListener('click', function () {
-        pwr.classList.add('on');
-        setTimeout(function () {
-          pwr.classList.remove('on'); pwr.classList.add('shake');
-          setTimeout(function () { pwr.classList.remove('shake'); }, 400);
-          showToast(lines[i % lines.length]); i++;
-          email.style.transition = 'transform .18s ease';
-          email.style.transform = 'scale(1.05)';
-          setTimeout(function () { email.style.transform = 'none'; }, 260);
-        }, 620);
-      });
-    })();
-  </script>
 </body>
 </html>
