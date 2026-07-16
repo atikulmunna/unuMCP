@@ -13,6 +13,8 @@ import { scanGeneratedProject, summarizeScan, redactSecrets } from "@unumcp/secu
 import { ArtifactType, ProjectStatus } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
+import { LlmService } from "../llm/llm.service";
+import { estimateCostUsd } from "../llm/llm-pricing";
 import { ApprovedTool, buildGenerateOptions, toServerName } from "./build-generate-options";
 import { createZip } from "./zip";
 import { computeWarnings, renderWarningsMarkdown } from "../completion/warnings";
@@ -24,6 +26,7 @@ export class GenerationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly llm: LlmService,
   ) {}
 
   /**
@@ -132,10 +135,23 @@ export class GenerationService {
 
       await this.persistArtifacts(projectId, run.id, files);
 
+      // Attribute the LLM cost of proposing this project's tools to the run
+      // (NFR-007b, P6-7). Tokens come from the FR-031 `llm_tool_call` traces
+      // recorded during `tools/propose`; repair passes add to these later.
+      const proposal = await this.sumProposalUsage(projectId, run.startedAt);
+      const model = this.llm.model;
+
       await this.prisma.$transaction([
         this.prisma.generationRun.update({
           where: { id: run.id },
-          data: { status: "passed", completedAt: new Date() },
+          data: {
+            status: "passed",
+            completedAt: new Date(),
+            inputTokens: proposal.inputTokens,
+            outputTokens: proposal.outputTokens,
+            estimatedCostUsd: estimateCostUsd(model, proposal.inputTokens, proposal.outputTokens),
+            llmModelId: proposal.inputTokens > 0 ? model : null,
+          },
         }),
         // Code (and its tests) are generated; the next stage is the test/sandbox phase.
         this.prisma.project.update({
@@ -285,6 +301,41 @@ export class GenerationService {
       totalTestCount: latestTest?.totalTestCount ?? 0,
       failingTestCount: latestTest?.failingTestCount ?? 0,
     });
+  }
+
+  /**
+   * Sum the LLM tokens spent proposing this project's tools, attributed to the
+   * current run: the `propose_*` traces created since the previous run started
+   * (or all of them for the first run). This maps one proposal batch to the one
+   * generation it fed, and never double-counts across re-generations.
+   */
+  private async sumProposalUsage(
+    projectId: string,
+    currentRunStartedAt: Date,
+  ): Promise<{ inputTokens: number; outputTokens: number }> {
+    const prevRun = await this.prisma.generationRun.findFirst({
+      where: { projectId, startedAt: { lt: currentRunStartedAt } },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true },
+    });
+    const traces = await this.prisma.auditEvent.findMany({
+      where: {
+        projectId,
+        eventType: "llm_tool_call",
+        ...(prevRun ? { createdAt: { gt: prevRun.startedAt } } : {}),
+      },
+      select: { metadata: true },
+    });
+    let inputTokens = 0;
+    let outputTokens = 0;
+    for (const t of traces) {
+      const m = t.metadata as { toolName?: unknown; inputTokens?: unknown; outputTokens?: unknown } | null;
+      if (typeof m?.toolName === "string" && m.toolName.startsWith("propose")) {
+        inputTokens += Number(m.inputTokens ?? 0);
+        outputTokens += Number(m.outputTokens ?? 0);
+      }
+    }
+    return { inputTokens, outputTokens };
   }
 
   private async persistArtifacts(projectId: string, runId: string, files: GeneratedFile[]) {

@@ -102,6 +102,11 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
     const run = await prisma.generationRun.findUniqueOrThrow({ where: { id: runId } });
     expect(run.status).toBe("passed");
     expect(run.repairAttempts).toBe(1);
+    // Repair LLM cost accrued onto the run (NFR-007b, P6-7); null-safe from a
+    // seeded run whose token columns started null.
+    expect(run.inputTokens).toBe(usage.inputTokens);
+    expect(run.outputTokens).toBe(usage.outputTokens);
+    expect(run.llmModelId).toBe("fake");
 
     const attempts = await prisma.repairAttempt.findMany({ where: { generationRunId: runId } });
     expect(attempts).toHaveLength(1);

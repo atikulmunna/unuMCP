@@ -82,6 +82,11 @@ export class LlmService {
     return this.client !== null;
   }
 
+  /** The configured model id when enabled (for cost estimation / run metadata). */
+  get model(): string | null {
+    return this.client ? this.config.model : null;
+  }
+
   /**
    * LLM-authored tool description, or `null` to signal "use the fallback".
    * When a project `ctx` is given, the call is traced (FR-031) — success or error.

@@ -158,6 +158,12 @@ async function main(): Promise<void> {
       console.log(`    ! no llm_tool_call trace found`);
     }
 
+    step(12, "LLM token/cost on the run + /metrics (P6-7, NFR-007b)");
+    const run = await prisma.generationRun.findFirst({ where: { projectId: id }, orderBy: { startedAt: "desc" } });
+    console.log(`    run tokens: ${run?.inputTokens} in / ${run?.outputTokens} out, est $${run?.estimatedCostUsd} (${run?.llmModelId})`);
+    const metrics = await call("GET", "/metrics");
+    console.log(`    /metrics cost: ${JSON.stringify(metrics.cost)}`);
+
     console.log("\n=== LIVE END-TO-END: DONE ===");
     // Clean up: cascade-delete the user removes the project + all children.
     await prisma.user.deleteMany({ where: { email } }).catch(() => undefined);

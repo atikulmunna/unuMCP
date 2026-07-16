@@ -17,6 +17,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
+import { estimateCostUsd } from "../llm/llm-pricing";
 import { SANDBOX_RUNNER, type SandboxRunner } from "../testing/sandbox-runner";
 import { repairConfigFromEnv, type RepairConfig } from "./repair.config";
 
@@ -101,6 +102,12 @@ export class RepairService {
       let failureLog = lastFailure.logExcerpt ?? "";
       let attemptsMade = 0;
       let repaired = false;
+      // Accrue LLM cost across passes onto the run (NFR-007b, P6-7). Seeded from
+      // the run's current totals (proposal cost from generation) and SET each pass
+      // so it's null-safe (a plain `increment` on a NULL column stays NULL).
+      let accInputTokens = run.inputTokens ?? 0;
+      let accOutputTokens = run.outputTokens ?? 0;
+      let accCostUsd = Number(run.estimatedCostUsd ?? 0);
 
       for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
         attemptsMade = attempt;
@@ -122,6 +129,19 @@ export class RepairService {
             { projectId },
           );
           changed = result.files;
+          // Accrue the repair call's LLM cost onto the run (NFR-007b, P6-7).
+          accInputTokens += result.usage.inputTokens;
+          accOutputTokens += result.usage.outputTokens;
+          accCostUsd += estimateCostUsd(result.model, result.usage.inputTokens, result.usage.outputTokens);
+          await this.prisma.generationRun.update({
+            where: { id: run.id },
+            data: {
+              inputTokens: accInputTokens,
+              outputTokens: accOutputTokens,
+              estimatedCostUsd: accCostUsd,
+              llmModelId: result.model,
+            },
+          });
         } catch (err) {
           // LLM error or a rejected edit (e.g. it tried to touch a frozen test).
           this.logger.warn(
