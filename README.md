@@ -4,9 +4,9 @@ Turn an **OpenAPI specification** into a working, tested **TypeScript MCP server
 
 You upload a spec; unuMCP analyses the endpoints, proposes tools (names, input schemas, risk levels), lets you approve them, generates a complete MCP server project, runs its tests in an isolated Docker sandbox, repairs failing code, and hands back a downloadable ZIP — README and `.env.example` included, secrets never.
 
-![unuMCP dashboard — the full build pipeline for one project](assets/unumcp-dashboard.png)
+![unuMCP dashboard — the project build pipeline](assets/unumcp.png)
 
-> One project's workbench: spec validated, tools proposed and approved (descriptions authored live by the LLM), a typed server generated, its suite passing **8/8** in a `--network none` sandbox, and a packaged download — with an append-only **activity trail** on the left that records every stage, including each internal LLM call (`propose_tool_descriptions_batch`). Captured from a live deploy on AWS (see [Deployment](#deployment)).
+> The project workbench: a five-stage build pipeline (left), the validated spec with **auto-detected bearer auth**, and the approved **tool plan** whose descriptions were authored live by the LLM. Captured from a live AWS deploy (see [Deployment](#deployment)).
 
 ---
 
