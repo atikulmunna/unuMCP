@@ -1,6 +1,6 @@
 # unuMCP
 
-[![Live demo — request access](https://img.shields.io/badge/%E2%97%8F%20Live%20demo-request%20access-2e7d32?style=for-the-badge)](#live-demo)
+[![Live demo — request access](https://img.shields.io/badge/%E2%97%8F%20Live%20demo-request%20access-2e7d32?style=for-the-badge)](https://aimunna.me/unuMCP/)
 
 Turn an **OpenAPI specification** into a working, tested **TypeScript MCP server** — with a human approval step, a deterministic code generator, a sandboxed test run, and a bounded self-repair loop.
 
@@ -34,7 +34,7 @@ You upload a spec; unuMCP analyses the endpoints, proposes tools (names, input s
 
 The demo runs on an **on-demand** cloud box that is **kept switched off to keep hosting costs near zero** — there is deliberately no always-on public URL (see [Deployment](#deployment) for why: it needs a real Docker daemon for the sandbox, which isn't free to run 24/7).
 
-**Want to see it live?** Reach out and the author will spin the server up (~30 seconds) and send you a URL — then take it down again afterwards:
+**Want to see it live?** Open the **[live-demo page](https://aimunna.me/unuMCP/)** (that's where the badge above goes), or reach out directly and the author will spin the server up (~30 seconds) and send you a URL — then take it down again afterwards:
 
 - 📧 **Atikul Munna** — [atikul.munna@northsouth.edu](mailto:atikul.munna@northsouth.edu?subject=unuMCP%20live%20demo%20request)
 
