@@ -57,12 +57,7 @@
     }
     @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 
-    .brand { display: flex; align-items: center; gap: 8px; font-family: var(--mono);
-      font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
-    .brand b { color: var(--ink); font-weight: 700; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--clay); display: inline-block; }
-
-    h1 { font-size: clamp(30px, 6vw, 40px); line-height: 1.08; margin: 4px 0 0;
+    h1 { font-size: clamp(30px, 6vw, 40px); line-height: 1.08; margin: 0;
       letter-spacing: -0.01em; font-weight: 600; }
     .lede { color: var(--muted); font-size: 17px; line-height: 1.55; margin-top: 14px; max-width: 46ch; }
 
@@ -80,8 +75,6 @@
   <div class="backdrop" aria-hidden="true"></div>
 
   <main class="card">
-    <div class="brand"><span>unu</span><span class="dot"></span><b>mcp</b><span style="margin-left:6px">· openapi → mcp</span></div>
-
     <h1>The live demo is currently powered down.</h1>
     <p class="lede">
       unuMCP runs generated code in a real <b>Docker sandbox</b>, so the demo lives on a
