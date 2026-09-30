@@ -1,8 +1,9 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runSandbox } from "@unumcp/sandbox";
+import { CONTAINER_NAME_PREFIX, runSandbox } from "@unumcp/sandbox";
 import { redactSecrets } from "@unumcp/security-scan";
 
 // Opt-in: these spin up the REAL two-phase Docker sandbox, so they only run when
@@ -39,6 +40,13 @@ describe.skipIf(!RUN)("sandbox security (P4-10, §18.3 — real Docker, opt-in)"
     expect(result.install.ok).toBe(true);
     expect(result.test.timedOut).toBe(true);
     expect(result.test.ok).toBe(false);
+
+    // The timeout must remove the container itself, not just the docker client:
+    // no sandbox container may be left spinning on the infinite loop.
+    const leftover = execFileSync("docker", ["ps", "-aq", "--filter", `name=${CONTAINER_NAME_PREFIX}`])
+      .toString()
+      .trim();
+    expect(leftover).toBe("");
   }, 180_000);
 
   it("a secret printed inside the sandbox does not survive redaction", async () => {

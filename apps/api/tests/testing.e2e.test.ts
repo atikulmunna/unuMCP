@@ -135,6 +135,23 @@ describe("sandbox test execution (P4-3/4/7)", () => {
     expect(results.body.results[0].failingTestCount).toBe(1);
   });
 
+  it("does not pass a clean exit that reported no tests (e.g. a neutered harness)", async () => {
+    const token = await makeUser("testnone");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await generatedProject(token);
+    nextResult = {
+      install: phase(true, "added 50 packages"),
+      test: phase(true, "> exit 0\n"),
+    };
+
+    const res = await request(app.getHttpServer()).post(`/projects/${projectId}/test`).set(auth);
+    expect(res.body.status).toBe("failed");
+    expect(res.body.summary.total).toBe(0);
+
+    const project = await request(app.getHttpServer()).get(`/projects/${projectId}`).set(auth);
+    expect(project.body.status).toBe("TESTS_FAILED");
+  });
+
   it("P6-1: redacts secrets from the persisted log excerpt (NFR-001)", async () => {
     const token = await makeUser("testredact");
     const auth = { Authorization: `Bearer ${token}` };

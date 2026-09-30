@@ -2,7 +2,7 @@ import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseTestSummary, truncateLog, type SandboxResult } from "@unumcp/sandbox";
+import { evaluateRun, truncateLog, type SandboxResult } from "@unumcp/sandbox";
 import { redactSecrets } from "@unumcp/security-scan";
 import { ProjectStatus, TestStatus, type GenerationStatus } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
@@ -111,19 +111,19 @@ export class TestingService {
     durationMs: number,
   ) {
     const installFailed = !result.install.ok;
-    const summary = parseTestSummary(result.test.log);
-    const testsPassed = result.test.ok && summary.failed === 0 && !result.test.timedOut;
+    // A pass needs at least one reported passing test, not just a clean exit.
+    const { summary, passed, infraFailed } = evaluateRun(result);
 
     // A sandbox/install failure or timeout is an infrastructure error, distinct
     // from a clean test failure (which feeds the repair loop in P4-5).
     let status: TestStatus;
     let projectStatus: ProjectStatus;
     let runStatus: GenerationStatus;
-    if (installFailed || result.test.timedOut) {
+    if (infraFailed) {
       status = TestStatus.errored;
       projectStatus = ProjectStatus.SANDBOX_FAILED;
       runStatus = "failed";
-    } else if (testsPassed) {
+    } else if (passed) {
       status = TestStatus.passed;
       projectStatus = ProjectStatus.TESTS_PASSED;
       runStatus = "passed";

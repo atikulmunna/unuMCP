@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   buildInstallArgs,
   buildTestArgs,
+  CONTAINER_NAME_PREFIX,
   DEFAULT_IMAGE,
   DEFAULT_LIMITS,
   type SandboxLimits,
@@ -20,7 +22,7 @@ export interface SandboxOptions {
   maxLogBytes?: number;
   /** Streamed output, chunk by chunk, as each phase runs (P4-8 live logs). */
   onLog?: (phase: SandboxPhase, chunk: string) => void;
-  /** Abort the run (user cancel) — kills the active phase's container process. */
+  /** Abort the run (user cancel): force-removes the active phase's container. */
   signal?: AbortSignal;
 }
 
@@ -38,8 +40,21 @@ export interface SandboxResult {
   test: PhaseResult;
 }
 
+/**
+ * Force-remove a container by name, killing it first if it is still running.
+ * Errors are ignored: the container may already be gone (or never started).
+ */
+function removeContainer(name: string): Promise<void> {
+  return new Promise((resolve) => {
+    const rm = spawn("docker", ["rm", "--force", name], { windowsHide: true, stdio: "ignore" });
+    rm.on("error", () => resolve());
+    rm.on("close", () => resolve());
+  });
+}
+
 function runDocker(
   args: string[],
+  containerName: string,
   timeoutMs: number,
   maxLogBytes: number,
   onChunk?: (chunk: string) => void,
@@ -54,11 +69,20 @@ function runDocker(
     const child = spawn("docker", args, { windowsHide: true });
     let log = "";
     let timedOut = false;
+    // SIGKILL on the `docker` CLI only detaches the client; the container keeps
+    // running. Remove the container through the daemon, then make sure the CLI
+    // exits too (it normally does on its own once its container is gone).
+    let removal: Promise<void> | null = null;
+    const stop = () => {
+      removal ??= removeContainer(containerName).then(() => {
+        child.kill("SIGKILL");
+      });
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      stop();
     }, timeoutMs);
-    const onAbort = () => child.kill("SIGKILL");
+    const onAbort = stop;
     signal?.addEventListener("abort", onAbort, { once: true });
 
     // Stop appending once capped so runaway output can't exhaust memory, but
@@ -73,7 +97,10 @@ function runDocker(
     const finish = (result: PhaseResult) => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
-      resolve(result);
+      // After a timeout/cancel, settle only once the container is really gone, so
+      // callers can safely delete the mounted project dir.
+      if (removal) void removal.then(() => resolve(result));
+      else resolve(result);
     };
     child.on("error", (err) => finish({ ok: false, exitCode: null, log: log + String(err), timedOut }));
     child.on("close", (code) => finish({ ok: code === 0 && !timedOut, exitCode: code, log, timedOut }));
@@ -90,9 +117,13 @@ export async function runSandbox(options: SandboxOptions): Promise<SandboxResult
   const limits = options.limits ?? DEFAULT_LIMITS;
   const maxLogBytes = options.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES;
   const { onLog, signal } = options;
+  const runName = `${CONTAINER_NAME_PREFIX}${randomUUID()}`;
+  const installName = `${runName}-install`;
+  const testName = `${runName}-test`;
 
   const install = await runDocker(
-    buildInstallArgs(image, options.projectDir),
+    buildInstallArgs(image, options.projectDir, installName),
+    installName,
     options.installTimeoutMs ?? 180_000,
     maxLogBytes,
     onLog && ((chunk) => onLog("install", chunk)),
@@ -106,7 +137,8 @@ export async function runSandbox(options: SandboxOptions): Promise<SandboxResult
   }
 
   const test = await runDocker(
-    buildTestArgs(image, options.projectDir, limits),
+    buildTestArgs(image, options.projectDir, testName, limits),
+    testName,
     options.testTimeoutMs ?? 120_000,
     maxLogBytes,
     onLog && ((chunk) => onLog("test", chunk)),

@@ -18,14 +18,23 @@ export const DEFAULT_LIMITS: SandboxLimits = {
 export const DEFAULT_IMAGE = "node:22-slim";
 
 /**
+ * Every sandbox container is named with this prefix, so a timed-out or
+ * cancelled one can be force-removed through the daemon (killing the `docker`
+ * CLI alone leaves the container running) and leftovers are easy to find.
+ */
+export const CONTAINER_NAME_PREFIX = "unumcp-sbx-";
+
+/**
  * Phase 1 — dependency install. Network is permitted (in production it is
  * restricted to an internal allowlisted registry mirror; for the spike it
  * reaches the public registry). The container is removed after running.
  */
-export function buildInstallArgs(image: string, projectDir: string): string[] {
+export function buildInstallArgs(image: string, projectDir: string, name: string): string[] {
   return [
     "run",
     "--rm",
+    "--name",
+    name,
     "-v",
     `${projectDir}:/app`,
     "-w",
@@ -45,11 +54,14 @@ export function buildInstallArgs(image: string, projectDir: string): string[] {
 export function buildTestArgs(
   image: string,
   projectDir: string,
+  name: string,
   limits: SandboxLimits = DEFAULT_LIMITS,
 ): string[] {
   return [
     "run",
     "--rm",
+    "--name",
+    name,
     "--network",
     "none",
     "--cpus",
