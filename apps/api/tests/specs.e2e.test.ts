@@ -6,7 +6,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
-import { configureBodyParser } from "../src/common/body-parser";
+import { configureHttp } from "../src/common/http-config";
 
 let app: INestApplication;
 let prisma: PrismaService;
@@ -102,8 +102,8 @@ async function makeProject(token: string, name = "P"): Promise<string> {
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const expressApp = moduleRef.createNestApplication<NestExpressApplication>();
-  // Same parser config as main.ts, so upload size limits match production.
-  configureBodyParser(expressApp);
+  // Same HTTP config as main.ts, so upload size limits match production.
+  configureHttp(expressApp);
   app = expressApp;
   prisma = app.get(PrismaService);
   await app.init();

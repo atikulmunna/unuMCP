@@ -221,7 +221,7 @@ Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper lat
 - **Prompt-injection detection** on untrusted spec text feeding the LLM; the description prompt treats spec content as untrusted data.
 - **Secret redaction** across logs, error envelopes, and persisted sandbox output.
 - **Sanitized error responses**: a single exception filter returns a structured envelope with a correlation id; 5xx bodies are generic (details stay server-side).
-- **Rate limiting** on the API (per-IP token buckets).
+- **Rate limiting** on the API (per-client, per-endpoint windows). Behind the same-host Next.js proxy the client address comes from `X-Forwarded-For`, which is trusted only from a loopback peer, so clients get separate buckets and can't spoof their address by calling the API directly.
 
 ## Deployment
 

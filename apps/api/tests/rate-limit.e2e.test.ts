@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Controller, Get, type INestApplication } from "@nestjs/common";
 import { APP_FILTER, APP_GUARD, Reflector } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
+import { configureHttp } from "../src/common/http-config";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
 import { RateLimitGuard } from "../src/common/rate-limit.guard";
 import { RateLimitStore } from "../src/common/rate-limit.store";
@@ -44,7 +46,10 @@ beforeAll(async () => {
       },
     ],
   }).compile();
-  app = moduleRef.createNestApplication();
+  const expressApp = moduleRef.createNestApplication<NestExpressApplication>();
+  // Same HTTP config as main.ts (trusts X-Forwarded-For from the loopback proxy).
+  configureHttp(expressApp);
+  app = expressApp;
   await app.init();
 });
 
@@ -88,5 +93,21 @@ describe("rate limiting (P6-5, §24)", () => {
     // /ping used its 2 in the first test (same long window), so it's blocked —
     // proving the bucket persisted independently of /strict.
     expect(res.status).toBe(429);
+  });
+
+  it("limits each client behind the local proxy separately (X-Forwarded-For from loopback)", async () => {
+    // Browsers reach the API through the Next.js proxy on the same host, so every
+    // connection comes from loopback; the client's address is in X-Forwarded-For.
+    const server = app.getHttpServer();
+    const from = (ip: string) => request(server).get("/strict").set("X-Forwarded-For", ip);
+
+    expect((await from("203.0.113.10")).status).toBe(200);
+    // A different client is not blocked by the first one's exhausted bucket...
+    expect((await from("203.0.113.20")).status).toBe(200);
+    // ...while the same client still is.
+    expect((await from("203.0.113.10")).status).toBe(429);
+    // A proxy chain is attributed to the client, not to the trusted loopback hop.
+    expect((await from("203.0.113.30, 127.0.0.1")).status).toBe(200);
+    expect((await from("203.0.113.30")).status).toBe(429);
   });
 });
