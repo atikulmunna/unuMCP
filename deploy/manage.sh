@@ -9,6 +9,7 @@
 #     bootlog   tail the first-boot bootstrap log (via SSM)
 #     logs      tail the API/web/tunnel service logs (via SSM)
 #     ssh       open an SSM shell on the box (no keys/ports)
+#     harden    set IMDS hop limit 1 on an existing box (containers can't read user-data)
 #     teardown  terminate the instance and delete the SG + IAM role
 set -euo pipefail
 REGION="${AWS_REGION:-us-east-1}"
@@ -55,6 +56,12 @@ case "${1:-}" in
   bootlog) run_ssm "tail -n 40 /var/log/unumcp-bootstrap.log" ;;
   logs)    run_ssm "journalctl -u unumcp-api -u unumcp-web -u unumcp-tunnel --no-pager -n 40" ;;
   ssh)     aws ssm start-session --target "$(iid)" ;;
+  harden)
+    # Boxes provisioned before the hop-limit fix let Docker containers reach
+    # IMDS (and the secrets in user-data). Takes effect immediately, no restart.
+    aws ec2 modify-instance-metadata-options --instance-id "$(iid)" \
+      --http-tokens required --http-put-response-hop-limit 1 --http-endpoint enabled >/dev/null
+    echo "IMDS hop limit set to 1 (IMDSv2 required)." ;;
   teardown)
     id="$(iid)"
     aws ec2 terminate-instances --instance-ids "$id" >/dev/null
@@ -65,5 +72,5 @@ case "${1:-}" in
     aws iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 2>/dev/null || true
     aws iam delete-role --role-name "$ROLE" 2>/dev/null || true
     echo "Torn down." ;;
-  *) grep -E '^#|url|start|stop|status|bootlog|logs|ssh|teardown' "$0" | sed -n '2,12p' ;;
+  *) grep -E '^#|url|start|stop|status|bootlog|logs|ssh|harden|teardown' "$0" | sed -n '2,13p' ;;
 esac

@@ -73,11 +73,15 @@ USERDATA="$(mktemp)"; trap 'rm -f "$USERDATA"' EXIT
 UD_REF="file://$USERDATA"
 if command -v cygpath >/dev/null 2>&1; then UD_REF="file://$(cygpath -w "$USERDATA")"; fi
 
+# IMDSv2 with a hop limit of 1: the host (SSM agent) can reach instance metadata,
+# but Docker containers (one hop further) cannot. The user-data above holds the
+# app's secrets, and the sandbox runs generated code, so containers must never
+# be able to read it.
 say "Launching $TYPE ..."
 IID="$(aws ec2 run-instances \
   --image-id "$AMI" --instance-type "$TYPE" --subnet-id "$SUBNET" \
   --security-group-ids "$SG_ID" --iam-instance-profile "Name=$ROLE" \
-  --metadata-options 'HttpTokens=required,HttpPutResponseHopLimit=2,HttpEndpoint=enabled' \
+  --metadata-options 'HttpTokens=required,HttpPutResponseHopLimit=1,HttpEndpoint=enabled' \
   --block-device-mappings "[{\"DeviceName\":\"/dev/xvda\",\"Ebs\":{\"VolumeSize\":$VOLUME_GB,\"VolumeType\":\"gp3\",\"DeleteOnTermination\":true}}]" \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$NAME}]" \
   --user-data "$UD_REF" \

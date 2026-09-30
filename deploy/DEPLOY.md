@@ -79,14 +79,17 @@ Next build, the Postgres image/data, and the `node:22-slim` sandbox image plus i
 ## Notes & caveats
 
 - **Secrets:** injected via EC2 user-data at launch (visible only through the instance's
-  own metadata, which is IMDSv2-only and behind a no-inbound SG). Fine for a single-user
-  demo. For hardening, move them to SSM Parameter Store (SecureString) and have the box
-  pull them with its role.
+  own metadata, which is IMDSv2-only and behind a no-inbound SG). The metadata hop limit
+  is 1, so Docker containers (including the sandbox's networked install phase) cannot
+  reach it. Boxes provisioned before that fix: run `bash deploy/manage.sh harden` once.
+  For further hardening, move the secrets to SSM Parameter Store (SecureString) and have
+  the box pull them with its role.
 - **2 GB RAM:** the 4 GB swapfile covers the one-time `next build` and the sandbox's
-  `npm install` spikes. The sandbox container itself is capped at 512 MB.
-- **Cancel-zombie (P4-10):** cancelling a running test SIGKILLs the docker client, not the
-  `--rm` container, so a container can linger briefly. Harmless for a demo; it's the
-  deferred infra item.
+  `npm install` spikes. The test-phase container is capped at 512 MB; the install phase
+  is not capped yet.
+- **Sandbox timeouts and cancel:** every sandbox container is named `unumcp-sbx-…`, and a
+  timeout or cancel force-removes it through the daemon (killing the `docker` client alone
+  would leave it running).
 - **Single instance:** the in-memory rate limiter and SSE log bus assume one box (fine
   here). Multi-instance would need the Redis-backed variants.
 
