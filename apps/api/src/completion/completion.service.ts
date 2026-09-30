@@ -2,7 +2,8 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { Prisma, ProjectStatus } from "@unumcp/db";
 import type { DetectedAuth } from "@unumcp/openapi";
 import { PrismaService } from "../prisma/prisma.service";
-import { computeWarnings } from "./warnings";
+import { latestStoredCodeResult } from "../testing/test-results";
+import { computeWarnings, testOutcomeOf } from "./warnings";
 
 // Test outcomes that are not eligible for completion.
 const NOT_PASSED = "Tests must pass before the project can be completed.";
@@ -27,12 +28,7 @@ export class CompletionService {
       where: { projectId },
       orderBy: { startedAt: "desc" },
     });
-    const latestTest = run
-      ? await this.prisma.testResult.findFirst({
-          where: { generationRunId: run.id },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
+    const latestTest = run ? await latestStoredCodeResult(this.prisma, run.id) : null;
 
     const spec = await this.prisma.apiSpec.findFirst({
       where: { projectId, validationStatus: "valid" },
@@ -42,6 +38,7 @@ export class CompletionService {
 
     const warnings = computeWarnings({
       authNeedsUserConfig: auth?.needsUserConfig ?? false,
+      testOutcome: testOutcomeOf(latestTest?.status),
       totalTestCount: latestTest?.totalTestCount ?? 0,
       failingTestCount: latestTest?.failingTestCount ?? 0,
     });

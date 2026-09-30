@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
+import JSZip from "jszip";
 import type { SandboxResult } from "@unumcp/sandbox";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -133,6 +134,31 @@ describe("sandbox test execution (P4-3/4/7)", () => {
 
     const results = await request(app.getHttpServer()).get(`/projects/${projectId}/test`).set(auth);
     expect(results.body.results[0].failingTestCount).toBe(1);
+  });
+
+  it("embeds WARNINGS.md with the failure count when a failed build is downloaded", async () => {
+    const token = await makeUser("testfailzip");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await generatedProject(token);
+    nextResult = {
+      install: phase(true, "sandbox ready"),
+      test: phase(false, "      Tests  1 failed | 3 passed (4)\n"),
+    };
+    await request(app.getHttpServer()).post(`/projects/${projectId}/test`).set(auth);
+
+    const res = await request(app.getHttpServer())
+      .get(`/projects/${projectId}/generation/download`)
+      .set(auth)
+      .buffer()
+      .parse((stream, done) => {
+        const chunks: Buffer[] = [];
+        stream.on("data", (c: Buffer) => chunks.push(Buffer.from(c)));
+        stream.on("end", () => done(null, Buffer.concat(chunks)));
+      });
+    expect(res.status).toBe(200);
+    const zip = await JSZip.loadAsync(res.body);
+    const warnings = await zip.file("WARNINGS.md")!.async("string");
+    expect(warnings).toMatch(/Tests did not pass: 1 of 4 failed/);
   });
 
   it("does not pass a clean exit that reported no tests (e.g. a neutered harness)", async () => {

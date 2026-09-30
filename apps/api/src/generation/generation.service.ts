@@ -18,7 +18,8 @@ import { estimateCostUsd } from "../llm/llm-pricing";
 import { ApprovedTool, buildGenerateOptions, toServerName } from "./build-generate-options";
 import { createZip } from "./zip";
 import { DEFAULT_BASE_URL, scanForPackaging } from "./security-gate";
-import { computeWarnings, renderWarningsMarkdown } from "../completion/warnings";
+import { computeWarnings, renderWarningsMarkdown, testOutcomeOf } from "../completion/warnings";
+import { latestStoredCodeResult } from "../testing/test-results";
 
 const MCP_SDK_VERSION = "1.29.0";
 
@@ -268,30 +269,24 @@ export class GenerationService {
       })),
     );
 
-    // Partial output from a warned build embeds the warnings (P5-4, §26.4).
-    if (project.status === ProjectStatus.COMPLETED_WITH_WARNINGS) {
-      const warnings = await this.gatherWarnings(projectId);
-      if (warnings.length > 0) {
-        files.push({ path: "WARNINGS.md", content: renderWarningsMarkdown(warnings) });
-      }
+    // Any download with warnings embeds them (P5-4, §26.4): a warned completion,
+    // but also partial output whose tests failed, errored, or never ran.
+    const warnings = await this.gatherWarnings(projectId);
+    if (warnings.length > 0) {
+      files.push({ path: "WARNINGS.md", content: renderWarningsMarkdown(warnings) });
     }
 
     const buffer = await createZip(files);
     return { filename: `${toServerName(project.name)}.zip`, buffer };
   }
 
-  /** Recompute the deterministic completion warnings for a project. */
+  /** Recompute the deterministic warnings for the code currently stored. */
   private async gatherWarnings(projectId: string): Promise<string[]> {
     const run = await this.prisma.generationRun.findFirst({
       where: { projectId },
       orderBy: { startedAt: "desc" },
     });
-    const latestTest = run
-      ? await this.prisma.testResult.findFirst({
-          where: { generationRunId: run.id },
-          orderBy: { createdAt: "desc" },
-        })
-      : null;
+    const latestTest = run ? await latestStoredCodeResult(this.prisma, run.id) : null;
     const spec = await this.prisma.apiSpec.findFirst({
       where: { projectId, validationStatus: "valid" },
       orderBy: { createdAt: "desc" },
@@ -299,6 +294,7 @@ export class GenerationService {
     const auth = spec?.detectedAuth as DetectedAuth | null;
     return computeWarnings({
       authNeedsUserConfig: auth?.needsUserConfig ?? false,
+      testOutcome: testOutcomeOf(latestTest?.status),
       totalTestCount: latestTest?.totalTestCount ?? 0,
       failingTestCount: latestTest?.failingTestCount ?? 0,
     });

@@ -168,6 +168,9 @@ describe("code generation (P3-9)", () => {
     // The env template carries only a placeholder, not a real token.
     const envExample = await zip.file(".env.example")!.async("string");
     expect(envExample).toContain("your_token_here");
+    // Downloaded before any test run: the archive says it is untested.
+    const warnings = await zip.file("WARNINGS.md")!.async("string");
+    expect(warnings).toMatch(/Tests have not been run/);
   });
 
   it("returns 404 when downloading before any generation", async () => {
