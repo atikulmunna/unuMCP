@@ -13,7 +13,8 @@ export default defineConfig({
       DATABASE_URL:
         process.env.DATABASE_URL ??
         "postgresql://unumcp:unumcp@localhost:5433/unumcp?schema=public",
-      JWT_SECRET: process.env.JWT_SECRET ?? "test-secret",
+      // The API refuses secrets under 32 chars; this one is for the suite only.
+      JWT_SECRET: process.env.JWT_SECRET ?? "unumcp-vitest-only-jwt-secret-0123456789",
       // Off for the suite (many registrations share one IP); the limiter's own
       // dedicated tests construct the guard with an explicit enabled config.
       RATE_LIMIT_DISABLED: "true",
