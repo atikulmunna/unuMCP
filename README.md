@@ -61,7 +61,7 @@ Design principles worth knowing before you read the code:
 
 - **Determinism first.** All *structural* artifacts (project scaffold, handler wiring, env detection, tests) are generated deterministically. The LLM is used **only** for prose (tool descriptions) and for repair edits — never to produce structural code. The platform runs end-to-end with the LLM disabled (you just get fallback descriptions and no repair).
 - **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam over any OpenAI-compatible backend. It ships with **Google Gemini** (free tier) and **NVIDIA NIM**, auto-selected from whichever key is set. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
-- **Tests are frozen during repair.** The repair loop may edit implementation files only; it can never weaken a test to force a pass (enforced by both the prompt and the parser).
+- **Tests are frozen during repair.** The repair loop may edit `src/**/*.ts` only: tests, `package.json`, and `tsconfig.json` are never offered to the model, and the parser rejects any other path. Every repair passes the same security scan as generated code before it is applied, and a run only counts as passing when at least one test reports a pass, so an edit can't win by making the suite run nothing.
 - **Every internal LLM call is traced.** Each agent tool call (`propose_tool_descriptions_batch`, `repair_code`) is recorded as an audit event with token counts, and its cost rolls up into per-run and platform metrics — secrets redacted throughout.
 
 ## Architecture
@@ -137,7 +137,7 @@ The API loads `apps/api/.env` (via Node's `--env-file`). Copy `.env.example` and
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `DATABASE_URL` | **yes** | `postgresql://unumcp:unumcp@localhost:5433/unumcp` | Postgres connection (Prisma) |
-| `JWT_SECRET` | **yes** | — | Signs/verifies auth tokens |
+| `JWT_SECRET` | **yes** | none: the API refuses to start without it | Signs/verifies auth tokens. At least 32 characters (`openssl rand -hex 32`) |
 | `PORT` | no | `3001` | API listen port |
 | `GEMINI_API_KEY` | no | — | Google Gemini key (free tier via AI Studio). Auto-selects the Gemini provider. `GOOGLE_API_KEY` also accepted |
 | `GEMINI_MODEL` | no | `gemini-3.5-flash` | Gemini model id (via its OpenAI-compatible endpoint) |
@@ -212,8 +212,9 @@ Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper lat
 ## Security posture
 
 - **Human approval gate** before any code is generated; high-risk tools (destructive verbs) are disabled by default.
-- **Static security scan** of generated code before it is persisted or packaged — refuses injected secrets, exfiltration hosts, and `eval`/shell patterns.
-- **Two-phase sandbox**: dependency install runs with network; the test phase runs `--network none` with CPU/memory/pid caps, read-only FS, and a SIGKILL timeout.
+- **Static security scan** of generated code and of every LLM repair before it is persisted or packaged: refuses injected secrets, exfiltration hosts, and `eval`/shell patterns.
+- **Two-phase sandbox**: dependency install runs with network; the test phase runs `--network none` with CPU/memory/pid caps and a read-only FS. Each container is named, and a timeout or cancel force-removes it through the Docker daemon.
+- **No default signing key**: the API will not boot without a `JWT_SECRET` of at least 32 characters.
 - **Prompt-injection detection** on untrusted spec text feeding the LLM; the description prompt treats spec content as untrusted data.
 - **Secret redaction** across logs, error envelopes, and persisted sandbox output.
 - **Sanitized error responses**: a single exception filter returns a structured envelope with a correlation id; 5xx bodies are generic (details stay server-side).
