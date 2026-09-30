@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const MAX_SPEC_CHARS = 25 * 1024 * 1024; // ~25 MB
+export const MAX_SPEC_CHARS = 25 * 1024 * 1024; // ~25 MB
 
 export const uploadSpecSchema = z.object({
   filename: z

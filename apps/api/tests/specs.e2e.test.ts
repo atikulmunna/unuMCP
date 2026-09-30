@@ -2,9 +2,11 @@ import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { configureBodyParser } from "../src/common/body-parser";
 
 let app: INestApplication;
 let prisma: PrismaService;
@@ -60,6 +62,26 @@ const securedSpec = JSON.stringify({
 
 const invalidSpec = JSON.stringify({ openapi: "3.0.3", info: { title: "x", version: "1" } });
 
+// ~400 KB: well past Express's default 100 KB JSON limit, like any real-world spec.
+const LARGE_PATH_COUNT = 300;
+const largeSpec = JSON.stringify({
+  openapi: "3.0.3",
+  info: { title: "Large API", version: "1.0.0" },
+  servers: [{ url: "https://api.large.test" }],
+  paths: Object.fromEntries(
+    Array.from({ length: LARGE_PATH_COUNT }, (_, i) => [
+      `/things${i}`,
+      {
+        get: {
+          operationId: `listThings${i}`,
+          description: `Lists "things" of kind ${i}.\n`.repeat(40),
+          responses: { "200": { description: "ok" } },
+        },
+      },
+    ]),
+  ),
+});
+
 async function makeUser(tag: string): Promise<string> {
   const email = `${tag}-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
   emails.push(email);
@@ -79,7 +101,10 @@ async function makeProject(token: string, name = "P"): Promise<string> {
 
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  app = moduleRef.createNestApplication();
+  const expressApp = moduleRef.createNestApplication<NestExpressApplication>();
+  // Same parser config as main.ts, so upload size limits match production.
+  configureBodyParser(expressApp);
+  app = expressApp;
   prisma = app.get(PrismaService);
   await app.init();
 });
@@ -124,6 +149,19 @@ describe("spec upload pipeline (P1-7/8/9)", () => {
     expect(upload.body.auth.assumed).toBe(true);
     expect(upload.body.auth.needsUserConfig).toBe(true);
     expect(spec.body.detectedAuth.needsUserConfig).toBe(true);
+  });
+
+  it("accepts a spec larger than Express's default 100 KB body limit", async () => {
+    const token = await makeUser("large");
+    const projectId = await makeProject(token);
+    expect(largeSpec.length).toBeGreaterThan(300 * 1024);
+
+    const upload = await request(app.getHttpServer())
+      .post(`/projects/${projectId}/spec/upload`)
+      .set({ Authorization: `Bearer ${token}` })
+      .send({ filename: "large.json", content: largeSpec });
+    expect(upload.status).toBe(201);
+    expect(upload.body.endpointCount).toBe(LARGE_PATH_COUNT);
   });
 
   it("detects a declared bearer scheme and persists it (P2-11)", async () => {
