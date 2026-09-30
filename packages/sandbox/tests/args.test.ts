@@ -1,54 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { buildInstallArgs, buildTestArgs, DEFAULT_LIMITS } from "../src/args";
+import { buildTestArgs, DEFAULT_LIMITS } from "../src/args";
 
-describe("buildInstallArgs (phase 1)", () => {
-  const args = buildInstallArgs("node:22-slim", "/host/project", "unumcp-sbx-1-install");
+describe("buildTestArgs", () => {
+  const args = buildTestArgs("unumcp-sandbox:abc", "/host/project", "unumcp-sbx-1-test", DEFAULT_LIMITS);
+  const valueOf = (flag: string) => args[args.indexOf(flag) + 1];
 
-  it("runs npm install with the project mounted at /app", () => {
-    expect(args.join(" ")).toContain("-v /host/project:/app");
-    expect(args.join(" ")).toContain("-w /app");
-    expect(args.slice(-4)).toEqual(["npm", "install", "--no-audit", "--no-fund"]);
+  it("disables the network", () => {
+    expect(valueOf("--network")).toBe("none");
   });
 
-  it("does NOT disable the network (install needs the registry)", () => {
-    expect(args).not.toContain("none");
+  it("enforces cpu, memory (no swap), and pid limits", () => {
+    expect(valueOf("--cpus")).toBe(DEFAULT_LIMITS.cpus);
+    expect(valueOf("--memory")).toBe(DEFAULT_LIMITS.memory);
+    expect(valueOf("--memory-swap")).toBe(DEFAULT_LIMITS.memory);
+    expect(valueOf("--pids-limit")).toBe(String(DEFAULT_LIMITS.pids));
   });
 
-  it("removes the container after running", () => {
+  it("uses a read-only root fs with a small writable tmpfs", () => {
+    expect(args).toContain("--read-only");
+    expect(valueOf("--tmpfs")).toMatch(/^\/tmp:.*nosuid.*size=/);
+  });
+
+  it("drops all capabilities, forbids privilege escalation, and runs unprivileged", () => {
+    expect(valueOf("--cap-drop")).toBe("ALL");
+    expect(valueOf("--security-opt")).toBe("no-new-privileges");
+    expect(valueOf("--user")).toBe("1000:1000");
+  });
+
+  it("mounts the project read-only under the image's dependency root", () => {
+    expect(valueOf("-v")).toBe("/host/project:/sandbox/app:ro");
+    expect(valueOf("-w")).toBe("/sandbox/app");
+  });
+
+  it("names the container so a timeout or cancel can force-remove it", () => {
+    expect(valueOf("--name")).toBe("unumcp-sbx-1-test");
     expect(args).toContain("--rm");
   });
 
-  it("names the container so a timeout or cancel can force-remove it", () => {
-    expect(args[args.indexOf("--name") + 1]).toBe("unumcp-sbx-1-install");
-  });
-});
-
-describe("buildTestArgs (phase 2)", () => {
-  const args = buildTestArgs("node:22-slim", "/host/project", "unumcp-sbx-1-test", DEFAULT_LIMITS);
-
-  it("disables the network", () => {
-    const i = args.indexOf("--network");
-    expect(i).toBeGreaterThan(-1);
-    expect(args[i + 1]).toBe("none");
-  });
-
-  it("enforces cpu, memory, and pid limits", () => {
-    expect(args).toContain("--cpus");
-    expect(args).toContain("--memory");
-    expect(args).toContain("--pids-limit");
-  });
-
-  it("uses a read-only root fs with a writable tmpfs", () => {
-    expect(args).toContain("--read-only");
-    const i = args.indexOf("--tmpfs");
-    expect(args[i + 1]).toBe("/tmp");
-  });
-
-  it("names the container so a timeout or cancel can force-remove it", () => {
-    expect(args[args.indexOf("--name") + 1]).toBe("unumcp-sbx-1-test");
-  });
-
-  it("runs npm test", () => {
-    expect(args.slice(-2)).toEqual(["npm", "test"]);
+  it("runs the image's own Vitest, never a project npm script", () => {
+    expect(args.slice(args.indexOf("unumcp-sandbox:abc"))).toEqual([
+      "unumcp-sandbox:abc",
+      "node",
+      "/sandbox/node_modules/vitest/vitest.mjs",
+      "run",
+      "--no-cache",
+    ]);
+    expect(args).not.toContain("npm");
   });
 });

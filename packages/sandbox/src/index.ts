@@ -1,11 +1,12 @@
-export {
-  buildInstallArgs,
-  buildTestArgs,
-  CONTAINER_NAME_PREFIX,
-  DEFAULT_LIMITS,
-  DEFAULT_IMAGE,
-} from "./args";
+export { buildTestArgs, CONTAINER_NAME_PREFIX, DEFAULT_LIMITS } from "./args";
 export type { SandboxLimits } from "./args";
+export {
+  buildSandboxImage,
+  ensureSandboxImage,
+  missingDependencies,
+  SANDBOX_DEPENDENCIES,
+  SANDBOX_IMAGE,
+} from "./image";
 export { runSandbox } from "./runSandbox";
 export type { SandboxOptions, SandboxResult, PhaseResult, SandboxPhase } from "./runSandbox";
 export { parseTestSummary, truncateLog } from "./parse";

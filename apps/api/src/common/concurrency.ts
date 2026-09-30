@@ -22,6 +22,60 @@ export async function mapWithConcurrency<T, R>(
   return results;
 }
 
+export interface Limiter {
+  /** True when a new `acquire` would have to wait. */
+  readonly saturated: boolean;
+  /**
+   * Wait for a slot (FIFO) and resolve to its release function, or to `null`
+   * if `signal` aborts while still waiting (the slot is then never taken).
+   */
+  acquire(signal?: AbortSignal): Promise<(() => void) | null>;
+}
+
+/** A counting semaphore: at most `limit` concurrent holders, the rest queue in order. */
+export function createLimiter(limit: number): Limiter {
+  const max = Math.max(1, Math.floor(limit));
+  let active = 0;
+  const waiting: Array<() => void> = [];
+
+  const releaser = () => {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = waiting.shift();
+      if (next) next(); // hand the slot straight to the next waiter
+      else active--;
+    };
+  };
+
+  return {
+    get saturated() {
+      return active >= max;
+    },
+    acquire(signal) {
+      if (signal?.aborted) return Promise.resolve(null);
+      if (active < max) {
+        active++;
+        return Promise.resolve(releaser());
+      }
+      return new Promise((resolve) => {
+        const grant = () => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(releaser());
+        };
+        const onAbort = () => {
+          const i = waiting.indexOf(grant);
+          if (i >= 0) waiting.splice(i, 1);
+          resolve(null);
+        };
+        waiting.push(grant);
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+    },
+  };
+}
+
 /** Split `items` into contiguous groups of at most `size`, preserving order (P2-6). */
 export function chunk<T>(items: readonly T[], size: number): T[][] {
   if (size <= 0) return items.length === 0 ? [] : [items.slice()];

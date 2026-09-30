@@ -80,9 +80,11 @@ async function main(): Promise<void> {
   const llm = app.get(LlmService);
   const email = `live-e2e-${Date.now()}@example.com`;
 
-  console.log(`LLM enabled: ${llm.enabled}  (provider auto-selected from env)`);
+  console.log(`LLM enabled: ${llm.enabled}  (model ${llm.model ?? "none"}, provider from env)`);
   if (!llm.enabled) {
-    console.error("LLM is DISABLED — set GEMINI_API_KEY (or NVIDIA_API_KEY) in apps/api/.env. Aborting.");
+    console.error(
+      "LLM is DISABLED: set GEMINI_API_KEY or NVIDIA_API_KEY (or LLM_PROVIDER=anthropic with ANTHROPIC_API_KEY) in apps/api/.env. Aborting.",
+    );
     await app.close();
     process.exitCode = 1;
     return;
@@ -118,7 +120,7 @@ async function main(): Promise<void> {
     const gen = await call("POST", `/projects/${id}/generation`);
     console.log(`    ✓ run ${gen.runId ?? gen.jobId ?? "?"} — ${gen.fileCount ?? "?"} files`);
 
-    step(7, "Run the two-phase Docker sandbox (real; ~60-90s)");
+    step(7, "Run the Docker sandbox (real; prebuilt image, first run builds it)");
     const t0 = Date.now();
     const test = await call("POST", `/projects/${id}/test`);
     const rows = Array.isArray(test) ? test : (test.results ?? []);

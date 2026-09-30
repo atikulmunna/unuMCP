@@ -1,22 +1,19 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  buildInstallArgs,
-  buildTestArgs,
-  CONTAINER_NAME_PREFIX,
-  DEFAULT_IMAGE,
-  DEFAULT_LIMITS,
-  type SandboxLimits,
-} from "./args";
+import { chmod, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { buildTestArgs, CONTAINER_NAME_PREFIX, DEFAULT_LIMITS, type SandboxLimits } from "./args";
+import { ensureSandboxImage, missingDependencies, SANDBOX_IMAGE } from "./image";
 
+/** `install` is the prepare step (kept under its historical name for API compatibility). */
 export type SandboxPhase = "install" | "test";
 
 export interface SandboxOptions {
   /** Host path to the generated project. */
   projectDir: string;
+  /** Prebuilt image to run. Defaults to {@link SANDBOX_IMAGE}, built on first use. */
   image?: string;
   limits?: SandboxLimits;
-  installTimeoutMs?: number;
   testTimeoutMs?: number;
   /** Cap on captured log bytes per phase, to bound memory on runaway output. */
   maxLogBytes?: number;
@@ -36,6 +33,11 @@ export interface PhaseResult {
 }
 
 export interface SandboxResult {
+  /**
+   * Preparation, under its historical name: the sandbox image exists and
+   * provides every dependency the project declares. No container runs and the
+   * project gets no network; a failure here is an infrastructure error.
+   */
   install: PhaseResult;
   test: PhaseResult;
 }
@@ -108,31 +110,70 @@ function runDocker(
 }
 
 /**
- * Run the two-phase sandbox over a generated project: install (network on,
- * mirror-restricted in prod) then test (network off, resource-limited).
- * The container is destroyed after each phase (`--rm`).
+ * Prepare a run without starting any container: the sandbox image exists
+ * (built on first use from its trusted in-code manifest), it provides exactly
+ * the dependencies the project declares, and the project dir is readable by the
+ * sandbox's unprivileged user.
+ */
+async function prepare(
+  projectDir: string,
+  image: string,
+  buildIfMissing: boolean,
+  onChunk?: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<PhaseResult> {
+  const fail = (log: string): PhaseResult => ({ ok: false, exitCode: null, log, timedOut: false });
+  if (signal?.aborted) return fail("");
+
+  if (buildIfMissing) {
+    const ensured = await ensureSandboxImage(onChunk);
+    if (!ensured.ok) return fail(`Could not build the sandbox image ${image}.\n${ensured.log.slice(-4_000)}`);
+  }
+
+  let manifest: string;
+  try {
+    manifest = await readFile(join(projectDir, "package.json"), "utf8");
+  } catch {
+    return fail("The project has no package.json.");
+  }
+  const missing = missingDependencies(manifest);
+  if (missing.length > 0) {
+    return fail(
+      `The sandbox image does not provide: ${missing.join(", ")}. The project's dependencies ` +
+        "must match the image's (codegen's template); nothing is installed at test time.",
+    );
+  }
+
+  // mkdtemp creates 0700 dirs; the sandbox's unprivileged user must be able to read the mount.
+  await chmod(projectDir, 0o755);
+  const log = `Sandbox image ${image} ready: dependencies preinstalled, nothing downloaded.\n`;
+  onChunk?.(log);
+  return { ok: true, exitCode: 0, log, timedOut: false };
+}
+
+/**
+ * Run a generated project's tests in the sandbox: prepare (image + dependency
+ * check, no container, no network), then one locked-down, network-less test
+ * container that is destroyed afterwards (`--rm`).
  */
 export async function runSandbox(options: SandboxOptions): Promise<SandboxResult> {
-  const image = options.image ?? DEFAULT_IMAGE;
+  const image = options.image ?? SANDBOX_IMAGE;
   const limits = options.limits ?? DEFAULT_LIMITS;
   const maxLogBytes = options.maxLogBytes ?? DEFAULT_MAX_LOG_BYTES;
   const { onLog, signal } = options;
-  const runName = `${CONTAINER_NAME_PREFIX}${randomUUID()}`;
-  const installName = `${runName}-install`;
-  const testName = `${runName}-test`;
+  const testName = `${CONTAINER_NAME_PREFIX}${randomUUID()}-test`;
 
-  const install = await runDocker(
-    buildInstallArgs(image, options.projectDir, installName),
-    installName,
-    options.installTimeoutMs ?? 180_000,
-    maxLogBytes,
+  const install = await prepare(
+    options.projectDir,
+    image,
+    options.image === undefined,
     onLog && ((chunk) => onLog("install", chunk)),
     signal,
   );
   if (!install.ok) {
     return {
       install,
-      test: { ok: false, exitCode: null, log: "skipped (install failed)", timedOut: false },
+      test: { ok: false, exitCode: null, log: "skipped (sandbox not ready)", timedOut: false },
     };
   }
 

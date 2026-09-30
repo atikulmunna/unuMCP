@@ -5,7 +5,7 @@ export interface RunVerdict {
   summary: TestSummary;
   /** Tests actually ran, at least one passed, and none failed. */
   passed: boolean;
-  /** Install failed or the test phase timed out: an infrastructure error, not a code defect. */
+  /** Preparation failed or the test phase timed out: an infrastructure error, not a code defect. */
   infraFailed: boolean;
 }
 

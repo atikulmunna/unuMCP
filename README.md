@@ -52,7 +52,7 @@ Upload OpenAPI spec
   → 👤 human approval  (high-risk tools disabled by default)
   → generate TypeScript MCP server  (deterministic codegen)
   → static security scan  (refuse code that smells of secrets / exfiltration / eval)
-  → run tests in a two-phase Docker sandbox  (install online → test offline)
+  → run tests in a locked-down Docker sandbox  (deps prebuilt into the image, test offline)
   → on failure: bounded self-repair loop  (fix implementation only, tests frozen)
   → complete → download ZIP  (sources + tests + README + .env.example, no secrets)
 ```
@@ -72,7 +72,7 @@ Design principles worth knowing before you read the code:
 | Frontend dashboard | **Next.js 15** (App Router), React 19, Tailwind v3 | Same-origin `/api/*` proxied to the backend (no CORS needed) |
 | Database | **PostgreSQL 16** via **Prisma** | Projects, runs, tools, test results, repair attempts, audit log |
 | Background jobs | **BullMQ + Redis** (optional) | Long-running generation/test/repair survive restarts; falls back to inline |
-| Sandbox | **Docker** two-phase runner | Phase 1 installs (network on); Phase 2 tests with `--network none` + resource caps |
+| Sandbox | **Docker**, prebuilt image | Dependencies baked into a content-hashed image; tests run with `--network none`, non-root, no capabilities, read-only mounts, resource caps |
 | LLM | **Google Gemini / NVIDIA NIM** (OpenAI-compatible) or **Anthropic Claude** (official SDK), via `@unumcp/llm` | Provider-agnostic; free tiers auto-selected, Claude opt-in; optional, since the platform degrades gracefully without it |
 | Monorepo | **pnpm workspaces + Turborepo** | Shared `packages/*`, cached `build`/`test`/`typecheck` |
 
@@ -87,7 +87,7 @@ packages/
   analysis/       Endpoint → tool classification, deterministic naming, risk scoring, proposal assembly
   schema-gen/     JSON Schema → Zod input-schema generation
   codegen/        Deterministic TypeScript MCP server generation (project, handlers, tests, README, .env.example)
-  sandbox/        Two-phase Docker sandbox runner + Vitest summary parser
+  sandbox/        Docker sandbox: prebuilt dependency image, locked-down test runner, Vitest summary parser
   security-scan/  Secret redaction, static scan of generated code, prompt-injection detection
   llm/            Provider-agnostic LLM client (Gemini / NVIDIA NIM / Anthropic Claude): batched tool-description proposal + code repair
   db/             Prisma schema + generated client
@@ -155,6 +155,7 @@ The API loads `apps/api/.env` (via Node's `--env-file`). Copy `.env.example` and
 | `JOB_CONCURRENCY` | no | `2` | Worker concurrency |
 | `MAX_REPAIR_ATTEMPTS` | no | `2` | Bounded self-repair passes (each ≈ one LLM call + a full sandbox rerun) |
 | `REPAIR_MAX_TOKENS` | no | `4096` | Token ceiling per repair pass |
+| `SANDBOX_CONCURRENCY` | no | `1` | Sandbox runs (tests and repair reruns) allowed at once; further runs queue |
 | `RATE_LIMIT_MAX` | no | `60` | Requests per window |
 | `RATE_LIMIT_WINDOW_MS` | no | `60000` | Rate-limit window |
 | `RATE_LIMIT_DISABLED` | no | — | Set `true` to disable rate limiting |
@@ -201,7 +202,7 @@ Notes:
 
 - **The API test suite needs a Postgres with the schema applied** (it exercises real Prisma against `DATABASE_URL`). Bring up `docker compose` and run `prisma db push` first.
 - The **real-Redis queue round-trip** test is opt-in: it only runs when `REDIS_URL` is set (the default suite runs jobs inline).
-- The **real Docker sandbox** path is validated via spikes and the testing e2e; unit/e2e tests use an injectable fake sandbox so they don't require Docker.
+- The **real Docker sandbox** is covered by an opt-in suite: `RUN_SANDBOX_DOCKER_TESTS=1 pnpm --filter @unumcp/api exec vitest run tests/sandbox.security.e2e.test.ts` proves, from inside a container, that there is no network, no root, and no write access to the project or the image, plus timeout cleanup and log redaction. Other unit/e2e tests use an injectable fake sandbox so they don't require Docker. The first real run builds the sandbox image (`pnpm --filter @unumcp/sandbox build-image` pre-builds it).
 
 ## Observability
 
@@ -215,7 +216,7 @@ Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper lat
 
 - **Human approval gate** before any code is generated; high-risk tools (destructive verbs) are disabled by default.
 - **Static security scan** of generated code and of every LLM repair before it is persisted or packaged: refuses injected secrets, exfiltration hosts, and `eval`/shell patterns.
-- **Two-phase sandbox**: dependency install runs with network; the test phase runs `--network none` with CPU/memory/pid caps and a read-only FS. Each container is named, and a timeout or cancel force-removes it through the Docker daemon.
+- **Locked-down sandbox, no install step**: every generated server declares the same dependency set, so it is baked into a prebuilt, content-hashed image and nothing is downloaded or installed at test time (a project declaring anything else is refused before any container starts). Tests run as the image's own Vitest (never a project `npm` script) with `--network none`, a non-root user, all capabilities dropped, `no-new-privileges`, CPU/memory/pid caps, a read-only root FS, and the project mounted read-only. Runs are serialized (`SANDBOX_CONCURRENCY`), and a timeout or cancel force-removes the container through the Docker daemon.
 - **No default signing key**: the API will not boot without a `JWT_SECRET` of at least 32 characters.
 - **Prompt-injection detection** on untrusted spec text feeding the LLM; the description prompt treats spec content as untrusted data.
 - **Secret redaction** across logs, error envelopes, and persisted sandbox output.

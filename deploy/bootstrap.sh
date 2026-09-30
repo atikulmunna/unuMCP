@@ -54,6 +54,8 @@ pnpm install --frozen-lockfile
 until docker exec unumcp-pg pg_isready -U unumcp; do sleep 2; done
 ( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma db push --skip-generate )
 ( cd apps/web && pnpm build )
+# Pre-build the sandbox image (dependencies baked in) so the first test run is fast.
+pnpm --filter @unumcp/sandbox build-image
 
 # 8. systemd units: API, Web, and the tunnel — all auto-start on every boot.
 cat > /etc/systemd/system/unumcp-api.service <<EOF
