@@ -60,7 +60,7 @@ Upload OpenAPI spec
 Design principles worth knowing before you read the code:
 
 - **Determinism first.** All *structural* artifacts (project scaffold, handler wiring, env detection, tests) are generated deterministically. The LLM is used **only** for prose (tool descriptions) and for repair edits — never to produce structural code. The platform runs end-to-end with the LLM disabled (you just get fallback descriptions and no repair).
-- **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam over any OpenAI-compatible backend. It ships with **Google Gemini** (free tier) and **NVIDIA NIM**, auto-selected from whichever key is set. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
+- **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam. It ships with **Google Gemini** (free tier) and **NVIDIA NIM** over their OpenAI-compatible APIs, auto-selected from whichever key is set, plus **Anthropic Claude** (default Claude Haiku 4.5) via the official SDK as a paid, explicit opt-in. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
 - **Tests are frozen during repair.** The repair loop may edit `src/**/*.ts` only: tests, `package.json`, and `tsconfig.json` are never offered to the model, and the parser rejects any other path. Every repair passes the same security scan as generated code before it is applied, and a run only counts as passing when at least one test reports a pass, so an edit can't win by making the suite run nothing.
 - **Every internal LLM call is traced.** Each agent tool call (`propose_tool_descriptions_batch`, `repair_code`) is recorded as an audit event with token counts, and its cost rolls up into per-run and platform metrics — secrets redacted throughout.
 
@@ -73,7 +73,7 @@ Design principles worth knowing before you read the code:
 | Database | **PostgreSQL 16** via **Prisma** | Projects, runs, tools, test results, repair attempts, audit log |
 | Background jobs | **BullMQ + Redis** (optional) | Long-running generation/test/repair survive restarts; falls back to inline |
 | Sandbox | **Docker** two-phase runner | Phase 1 installs (network on); Phase 2 tests with `--network none` + resource caps |
-| LLM | **Google Gemini / NVIDIA NIM** (OpenAI-compatible), via `@unumcp/llm` | Provider-agnostic + auto-selected; optional — platform degrades gracefully without it |
+| LLM | **Google Gemini / NVIDIA NIM** (OpenAI-compatible) or **Anthropic Claude** (official SDK), via `@unumcp/llm` | Provider-agnostic; free tiers auto-selected, Claude opt-in; optional, since the platform degrades gracefully without it |
 | Monorepo | **pnpm workspaces + Turborepo** | Shared `packages/*`, cached `build`/`test`/`typecheck` |
 
 ## Repository layout
@@ -89,7 +89,7 @@ packages/
   codegen/        Deterministic TypeScript MCP server generation (project, handlers, tests, README, .env.example)
   sandbox/        Two-phase Docker sandbox runner + Vitest summary parser
   security-scan/  Secret redaction, static scan of generated code, prompt-injection detection
-  llm/            Provider-agnostic LLM client (Gemini / NVIDIA NIM): batched tool-description proposal + code repair
+  llm/            Provider-agnostic LLM client (Gemini / NVIDIA NIM / Anthropic Claude): batched tool-description proposal + code repair
   db/             Prisma schema + generated client
 ```
 
@@ -143,7 +143,9 @@ The API loads `apps/api/.env` (via Node's `--env-file`). Copy `.env.example` and
 | `GEMINI_MODEL` | no | `gemini-3.5-flash` | Gemini model id (via its OpenAI-compatible endpoint) |
 | `NVIDIA_API_KEY` | no | — | NVIDIA NIM key. `NIM_API_KEY` also accepted |
 | `NIM_MODEL` | no | `meta/llama-3.3-70b-instruct` | NIM model id (OpenAI-compatible chat) |
-| `LLM_PROVIDER` | no | auto | Force the provider: `gemini` or `nim`. Default auto-detects from whichever key is set (Gemini preferred). **No key ⇒ LLM features disabled** (deterministic fallback, no repair) |
+| `ANTHROPIC_API_KEY` | no | none | Anthropic key. Only used with `LLM_PROVIDER=anthropic`: it bills per token, so a key alone never selects it |
+| `ANTHROPIC_MODEL` | no | `claude-haiku-4-5` | Claude model id, e.g. `claude-sonnet-5-5` or `claude-opus-5-5`. Cost appears in run metrics and `/metrics` |
+| `LLM_PROVIDER` | no | auto | Force the provider: `gemini`, `nim`, or `anthropic`. Default auto-detects from whichever free-tier key is set (Gemini preferred); `anthropic` is never auto-selected. **No key ⇒ LLM features disabled** (deterministic fallback, no repair) |
 | `LLM_DISABLED` | no | — | Set `true` to force-disable the LLM even with a key |
 | `PROPOSAL_BATCH_SIZE` | no | `5` | Tools described per LLM call (batched proposal, P2-6) |
 | `PROPOSAL_CONCURRENCY` | no | `3` | Description batches in flight at once |

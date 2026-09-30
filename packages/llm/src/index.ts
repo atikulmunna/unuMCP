@@ -4,6 +4,8 @@ export { NimClient, NIM_DEFAULT_BASE_URL } from "./nim-client";
 export type { NimClientOptions } from "./nim-client";
 export { GeminiClient, GEMINI_DEFAULT_BASE_URL } from "./gemini-client";
 export type { GeminiClientOptions } from "./gemini-client";
+export { AnthropicClient, ANTHROPIC_DEFAULT_MODEL } from "./anthropic-client";
+export type { AnthropicClientOptions } from "./anthropic-client";
 export {
   proposeToolDescription,
   proposeToolDescriptions,

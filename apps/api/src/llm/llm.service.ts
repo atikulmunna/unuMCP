@@ -1,5 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
+  AnthropicClient,
+  ANTHROPIC_DEFAULT_MODEL,
   GeminiClient,
   NimClient,
   proposeToolDescription,
@@ -12,11 +14,11 @@ import {
 } from "@unumcp/llm";
 import type { LlmTraceContext, LlmTraceEntry, LlmTraceService } from "./llm-trace.service";
 
-export type LlmProvider = "nim" | "gemini";
+export type LlmProvider = "nim" | "gemini" | "anthropic";
 
 export interface LlmConfig {
   enabled: boolean;
-  /** Which OpenAI-compatible backend to talk to. Defaults to "nim". */
+  /** Which backend to talk to (Gemini/NIM over OpenAI-compatible HTTP, or Anthropic). Defaults to "nim". */
   provider?: LlmProvider;
   model: string;
   apiKey?: string;
@@ -29,21 +31,28 @@ const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
  * Resolve LLM config from env. The provider is chosen by `LLM_PROVIDER` when set,
  * otherwise auto-detected from whichever key is present (Gemini preferred, since
  * its free tier is the common case). Disabled when no key is present or opted out.
+ *
+ * Anthropic is never auto-selected: it bills per token, and `ANTHROPIC_API_KEY`
+ * is often exported globally for other tools, so a key alone must not start
+ * spending. It needs an explicit `LLM_PROVIDER=anthropic`.
  */
 export function llmConfigFromEnv(env: NodeJS.ProcessEnv = process.env): LlmConfig {
   const geminiKey = env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY;
   const nimKey = env.NVIDIA_API_KEY ?? env.NIM_API_KEY;
   const provider: LlmProvider =
-    env.LLM_PROVIDER === "nim" || env.LLM_PROVIDER === "gemini"
+    env.LLM_PROVIDER === "nim" || env.LLM_PROVIDER === "gemini" || env.LLM_PROVIDER === "anthropic"
       ? env.LLM_PROVIDER
       : geminiKey
         ? "gemini"
         : "nim";
-  const apiKey = provider === "gemini" ? geminiKey : nimKey;
+  const apiKey =
+    provider === "gemini" ? geminiKey : provider === "anthropic" ? env.ANTHROPIC_API_KEY : nimKey;
   const model =
     provider === "gemini"
       ? (env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL)
-      : (env.NIM_MODEL ?? NIM_DEFAULT_MODEL);
+      : provider === "anthropic"
+        ? (env.ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT_MODEL)
+        : (env.NIM_MODEL ?? NIM_DEFAULT_MODEL);
   return {
     enabled: Boolean(apiKey) && env.LLM_DISABLED !== "true",
     provider,
@@ -69,13 +78,7 @@ export class LlmService {
     client?: LlmClient,
     private readonly trace?: LlmTraceService,
   ) {
-    this.client =
-      client ??
-      (config.enabled && config.apiKey
-        ? config.provider === "gemini"
-          ? new GeminiClient({ apiKey: config.apiKey, model: config.model })
-          : new NimClient({ apiKey: config.apiKey, model: config.model })
-        : null);
+    this.client = client ?? createClient(config);
   }
 
   get enabled(): boolean {
@@ -192,6 +195,20 @@ export class LlmService {
   ): Promise<void> {
     if (!ctx || !this.trace) return;
     await this.trace.record({ projectId: ctx.projectId, ...entry });
+  }
+}
+
+/** The configured provider's client, or `null` when the LLM is disabled. */
+function createClient(config: LlmConfig): LlmClient | null {
+  if (!config.enabled || !config.apiKey) return null;
+  const { apiKey, model } = config;
+  switch (config.provider) {
+    case "gemini":
+      return new GeminiClient({ apiKey, model });
+    case "anthropic":
+      return new AnthropicClient({ apiKey, model });
+    default:
+      return new NimClient({ apiKey, model });
   }
 }
 

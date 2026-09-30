@@ -69,6 +69,23 @@ describe("LlmService (P2-5)", () => {
     expect(gem.model).toBe("gemini-3.5-pro");
   });
 
+  it("selects Anthropic only on an explicit LLM_PROVIDER, defaulting to Claude Haiku 4.5", () => {
+    // A key alone never starts paid usage (it's often exported globally for other tools).
+    const keyOnly = llmConfigFromEnv({ ANTHROPIC_API_KEY: "sk-ant-x" });
+    expect(keyOnly.provider).toBe("nim");
+    expect(keyOnly.enabled).toBe(false);
+    // Nor does it outrank the free Gemini tier.
+    expect(llmConfigFromEnv({ ANTHROPIC_API_KEY: "sk-ant-x", GEMINI_API_KEY: "g" }).provider).toBe("gemini");
+
+    const cfg = llmConfigFromEnv({ LLM_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "sk-ant-x", GEMINI_API_KEY: "g" });
+    expect(cfg).toMatchObject({ enabled: true, provider: "anthropic", apiKey: "sk-ant-x", model: "claude-haiku-4-5" });
+    expect(
+      llmConfigFromEnv({ LLM_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL: "claude-sonnet-5-5" }).model,
+    ).toBe("claude-sonnet-5-5");
+    // Opted in but no key: disabled, deterministic fallback.
+    expect(llmConfigFromEnv({ LLM_PROVIDER: "anthropic" }).enabled).toBe(false);
+  });
+
   it("builds a working Gemini-backed service from config (no real network)", async () => {
     // Provider selection picks GeminiClient; we still inject a fake client to
     // assert the seam is provider-agnostic end to end.

@@ -18,4 +18,13 @@ describe("estimateCostUsd (P6-7, NFR-007b)", () => {
     // A model not in the table is still free.
     expect(estimateCostUsd("other", 1_000_000, 1_000_000, table)).toBe(0);
   });
+
+  it("prices Claude models, including the dated snapshot the API reports", () => {
+    // Haiku 4.5: $1/M in, $5/M out → 1k in + 400 out = $0.001 + $0.002.
+    expect(estimateCostUsd("claude-haiku-4-5", 1_000, 400)).toBe(0.003);
+    expect(estimateCostUsd("claude-haiku-4-5-20251001", 1_000, 400)).toBe(0.003);
+    expect(estimateCostUsd("claude-opus-5-5", 1_000_000, 0)).toBe(4);
+    // Only an 8-digit date suffix maps to an alias.
+    expect(estimateCostUsd("claude-haiku-4-5-custom", 1_000, 400)).toBe(0);
+  });
 });
