@@ -14,6 +14,8 @@ import type { SandboxRunner } from "../src/testing/sandbox-runner";
 const BUGGY = "export const ok = (r: { ok: boolean }) => { if (r.ok) throw new Error('boom'); };\n";
 const FIXED = "export const ok = (r: { ok: boolean }) => { if (!r.ok) throw new Error('boom'); };\n";
 
+const PACKAGE_JSON = `${JSON.stringify({ name: "lib", scripts: { test: "vitest run" } }, null, 2)}\n`;
+
 const PASS_LOG = "Test Files  1 passed (1)\n Tests  1 passed (1)\n";
 const FAIL_LOG = "Test Files  1 failed (1)\n Tests  1 failed | 0 passed (1)\n";
 
@@ -51,8 +53,13 @@ async function seedFailedRun(tag: string): Promise<{ projectId: string; runId: s
 
   const sourceUrl = await storage.save(`${project.id}/generated/${run.id}/src/lib.ts`, BUGGY);
   const testUrl = await storage.save(`${project.id}/generated/${run.id}/tests/lib.test.ts`, "// frozen\n");
+  const pkgUrl = await storage.save(`${project.id}/generated/${run.id}/package.json`, PACKAGE_JSON);
   await prisma.generatedArtifact.create({
     data: { projectId: project.id, artifactType: "source_file", path: "src/lib.ts", contentUrl: sourceUrl, contentHash: "old" },
+  });
+  // Codegen classifies config like package.json as a source_file too; repair must still never edit it.
+  await prisma.generatedArtifact.create({
+    data: { projectId: project.id, artifactType: "source_file", path: "package.json", contentUrl: pkgUrl, contentHash: "pkg" },
   });
   await prisma.generatedArtifact.create({
     data: { projectId: project.id, artifactType: "test_file", path: "tests/lib.test.ts", contentUrl: testUrl, contentHash: "frozen" },
@@ -83,18 +90,19 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
   it("fixes the implementation and drives the run to TESTS_PASSED", async () => {
     const { projectId, runId, sourceUrl } = await seedFailedRun("repair-ok");
 
-    const llm = fakeLlm(async () => ({
-      files: [{ path: "src/lib.ts", content: FIXED }],
-      usage,
-      model: "fake",
-      latencyMs: 1,
-    }));
+    const offered: string[] = [];
+    const llm = fakeLlm(async (input) => {
+      offered.push(...input.files.map((f) => f.path));
+      return { files: [{ path: "src/lib.ts", content: FIXED }], usage, model: "fake", latencyMs: 1 };
+    });
     // Sandbox passes once the fix is applied.
     const sandbox: SandboxRunner = { run: async () => sandboxLog(PASS_LOG) };
     const service = new RepairService(prisma, storage, sandbox, llm, { maxAttempts: 2, maxTokens: 100 });
 
     const result = await service.repairFailingRun(projectId);
     expect(result).toEqual({ repaired: true, attempts: 1 });
+    // Only implementation sources reach the model: never tests or package.json.
+    expect(offered).toEqual(["src/lib.ts"]);
 
     const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
     expect(project.status).toBe("TESTS_PASSED");
@@ -161,6 +169,43 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
     const attempts = await prisma.repairAttempt.findMany({ where: { generationRunId: runId } });
     expect(attempts).toHaveLength(1);
     expect(attempts[0]?.outcome).toBe("failed");
+  });
+
+  it("rejects a repair that fails the security scan without applying or testing it", async () => {
+    const { projectId, runId, sourceUrl } = await seedFailedRun("repair-insecure");
+
+    const llm = fakeLlm(async () => ({
+      files: [{ path: "src/lib.ts", content: `import { exec } from "node:child_process";\n${FIXED}` }],
+      usage,
+      model: "fake",
+      latencyMs: 1,
+    }));
+    let sandboxRuns = 0;
+    const sandbox: SandboxRunner = {
+      run: async () => {
+        sandboxRuns++;
+        return sandboxLog(PASS_LOG);
+      },
+    };
+    const service = new RepairService(prisma, storage, sandbox, llm, { maxAttempts: 2, maxTokens: 100 });
+
+    const result = await service.repairFailingRun(projectId);
+    expect(result).toEqual({ repaired: false, attempts: 1 });
+    expect(sandboxRuns).toBe(0);
+    // The stored source is untouched, so neither the ZIP nor a later run sees the edit.
+    expect(await storage.read(sourceUrl)).toBe(BUGGY);
+
+    const project = await prisma.project.findUniqueOrThrow({ where: { id: projectId } });
+    expect(project.status).toBe("TESTS_FAILED");
+    const attempts = await prisma.repairAttempt.findMany({ where: { generationRunId: runId } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]?.outcome).toBe("failed");
+    expect(attempts[0]?.diff).toContain("child_process");
+
+    const audit = await prisma.auditEvent.findMany({
+      where: { projectId, eventType: "security_scan_failed" },
+    });
+    expect(audit).toHaveLength(1);
   });
 
   it("is a no-op when the LLM is disabled", async () => {

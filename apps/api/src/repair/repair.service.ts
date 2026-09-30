@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseTestSummary, truncateLog, type SandboxResult, type TestSummary } from "@unumcp/sandbox";
-import { redactSecrets } from "@unumcp/security-scan";
+import { evaluateRun, truncateLog, type SandboxResult, type TestSummary } from "@unumcp/sandbox";
+import { redactSecrets, summarizeScan, type ScanResult } from "@unumcp/security-scan";
 import { unifiedDiff, type RepairFile } from "@unumcp/llm";
 import {
   ArtifactType,
@@ -19,6 +19,7 @@ import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
 import { estimateCostUsd } from "../llm/llm-pricing";
 import { SANDBOX_RUNNER, type SandboxRunner } from "../testing/sandbox-runner";
+import { DEFAULT_BASE_URL, scanForPackaging } from "../generation/security-gate";
 import { repairConfigFromEnv, type RepairConfig } from "./repair.config";
 
 export interface RepairSummary {
@@ -30,13 +31,25 @@ const FAILURE_SUMMARY_CAP = 4_000;
 const DIFF_CAP = 20_000;
 
 /**
+ * The only files a repair may edit: implementation sources under `src/`. Tests,
+ * the README, and project config (`package.json` scripts and dependencies,
+ * `tsconfig.json`, `.env.example`) stay frozen, so a repair can neither neuter
+ * the test harness nor pull in a new dependency.
+ */
+export function isRepairEditable(path: string): boolean {
+  return path.startsWith("src/") && path.endsWith(".ts") && !path.endsWith(".test.ts");
+}
+
+/**
  * Bounded self-repair loop (P4-5/P4-6, FR-026, §11.4). After a clean test
  * failure: read the failure → ask the LLM to fix the **implementation only** →
- * rerun the sandbox → repeat up to `maxAttempts`. Tests are frozen (only
- * `source_file` artifacts are editable, and the repair parser rejects any test
- * path). Every pass is persisted as a `RepairAttempt` (diff + failure + outcome)
- * so the user can inspect the history; on exhaustion the project stays
- * `TESTS_FAILED` — never a silent success.
+ * security-scan the edit → rerun the sandbox → repeat up to `maxAttempts`.
+ * Tests are frozen (only {@link isRepairEditable} files are offered, and the
+ * repair parser rejects any path outside that set), and every edit passes the
+ * same security gate as generated code before it is applied. Every pass is
+ * persisted as a `RepairAttempt` (diff + failure + outcome) so the user can
+ * inspect the history; on exhaustion the project stays `TESTS_FAILED`, never a
+ * silent success.
  *
  * One pass is ~40s (LLM) + a full sandbox rerun, so this runs on the background
  * queue (P6-6), not in-request.
@@ -80,10 +93,19 @@ export class RepairService {
     const artifacts = await this.prisma.generatedArtifact.findMany({
       where: { projectId, contentUrl: { not: null } },
     });
-    // Only real source files are editable; README and tests stay frozen.
-    const editable = artifacts.filter((a) => a.artifactType === ArtifactType.source_file);
+    const editable = artifacts.filter(
+      (a) => a.artifactType === ArtifactType.source_file && isRepairEditable(a.path),
+    );
     if (editable.length === 0) return { repaired: false, attempts: 0 };
     const byPath = new Map(editable.map((a) => [a.path, a]));
+
+    // Repaired code must stay within the same host allowlist as generated code.
+    const spec = await this.prisma.apiSpec.findFirst({
+      where: { projectId, validationStatus: "valid" },
+      orderBy: { createdAt: "desc" },
+      select: { baseUrl: true },
+    });
+    const baseUrl = spec?.baseUrl ?? DEFAULT_BASE_URL;
 
     const dir = await mkdtemp(join(tmpdir(), "unumcp-repair-"));
     try {
@@ -157,6 +179,16 @@ export class RepairService {
           .map((f) => unifiedDiff(before.get(f.path) ?? "", f.content, f.path))
           .filter((d) => d.length > 0)
           .join("\n\n");
+
+        // Security gate before anything is written: repaired code is
+        // model-authored, so it gets the same scan as generated code. Only the
+        // changed files need scanning; the rest already passed at generation.
+        const scan = scanForPackaging(changed, baseUrl);
+        if (!scan.passed) {
+          await this.rejectInsecureRepair(projectId, run.id, attempt, failureLog, diff, scan);
+          break;
+        }
+
         for (const f of changed) {
           const artifact = byPath.get(f.path);
           if (!artifact) continue; // repairCode already enforces the editable allowlist
@@ -197,6 +229,35 @@ export class RepairService {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  }
+
+  /**
+   * A repair that fails the security scan is never applied: record the attempt
+   * as failed (with the rejected diff, redacted) plus a `security_scan_failed`
+   * audit event, so it shows in the history and in the security metrics.
+   */
+  private async rejectInsecureRepair(
+    projectId: string,
+    runId: string,
+    attempt: number,
+    failureLog: string,
+    diff: string,
+    scan: ScanResult,
+  ): Promise<void> {
+    const high = scan.findings.filter((f) => f.severity === "high");
+    this.logger.warn(
+      `Repair attempt ${attempt} for project ${projectId} failed the security scan (${high.length} high); not applied.`,
+    );
+    await this.recordAttempt(runId, attempt, failureLog, redactSecrets(diff), RepairOutcome.failed);
+    await this.prisma.auditEvent.create({
+      data: {
+        projectId,
+        eventType: "security_scan_failed",
+        actor: "agent",
+        summary: `Repair attempt ${attempt} failed the security scan and was not applied: ${summarizeScan(scan)}`,
+        metadata: JSON.parse(JSON.stringify({ findings: high.slice(0, 20) })),
+      },
+    });
   }
 
   /** Overwrite a stored artifact in place with the repaired content + new hash. */
@@ -292,11 +353,9 @@ interface RunOutcome {
   log: string;
 }
 
-/** Classify a sandbox rerun the same way `TestingService` does (single source of truth in spirit). */
+/** Classify a sandbox rerun with the same `evaluateRun` rule `TestingService` uses. */
 function classifyRun(result: SandboxResult): RunOutcome {
-  const summary = parseTestSummary(result.test.log);
-  const infraFailed = !result.install.ok || result.test.timedOut;
-  const passed = result.test.ok && summary.failed === 0 && !infraFailed;
+  const { summary, passed, infraFailed } = evaluateRun(result);
   const log = truncateLog(redactSecrets(infraFailed ? result.install.log : result.test.log));
   return { summary, passed, infraFailed, log };
 }

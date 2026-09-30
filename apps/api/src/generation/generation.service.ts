@@ -9,7 +9,7 @@ import { dereferenceSpec, detectAuth, extractEndpoints } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
 import { generateProject } from "@unumcp/codegen";
 import type { GeneratedFile, RiskLevel } from "@unumcp/codegen";
-import { scanGeneratedProject, summarizeScan, redactSecrets } from "@unumcp/security-scan";
+import { summarizeScan, redactSecrets } from "@unumcp/security-scan";
 import { ArtifactType, ProjectStatus } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
@@ -17,6 +17,7 @@ import { LlmService } from "../llm/llm.service";
 import { estimateCostUsd } from "../llm/llm-pricing";
 import { ApprovedTool, buildGenerateOptions, toServerName } from "./build-generate-options";
 import { createZip } from "./zip";
+import { DEFAULT_BASE_URL, scanForPackaging } from "./security-gate";
 import { computeWarnings, renderWarningsMarkdown } from "../completion/warnings";
 
 const MCP_SDK_VERSION = "1.29.0";
@@ -96,7 +97,7 @@ export class GenerationService {
         };
       });
 
-      const baseUrl = spec.baseUrl ?? "https://api.example.com";
+      const baseUrl = spec.baseUrl ?? DEFAULT_BASE_URL;
       const files = generateProject(
         buildGenerateOptions({
           serverName: toServerName(project.name),
@@ -111,7 +112,7 @@ export class GenerationService {
       // §16.3). Although generation is deterministic, the base URL and tool
       // names/descriptions come from an untrusted spec — refuse to ship code
       // that smells of injected secrets, exfiltration hosts, or eval/shell.
-      const scan = scanGeneratedProject(files, { allowedHosts: [hostOf(baseUrl)] });
+      const scan = scanForPackaging(files, baseUrl);
       if (!scan.passed) {
         const high = scan.findings.filter((f) => f.severity === "high");
         await this.prisma.auditEvent.create({
@@ -357,15 +358,6 @@ export class GenerationService {
         },
       });
     }
-  }
-}
-
-/** Hostname (no port) of a base URL; "" if it can't be parsed. */
-function hostOf(baseUrl: string): string {
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return "";
   }
 }
 
