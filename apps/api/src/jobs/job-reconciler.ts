@@ -15,7 +15,8 @@ const STALE_STAGE_AFTER_MS = 15 * 60 * 1000;
 /**
  * In-flight stages a crash can strand, and the state each settles on: a test
  * run that never finished is an infrastructure failure (safe to retry), and an
- * interrupted repair falls back to the failing result it started from.
+ * interrupted repair falls back to the failing result it started from (only a
+ * passing repair is ever saved, so the stored code is still the generated one).
  */
 const STRANDED_STAGES = {
   [ProjectStatus.TEST_RUNNING]: { next: ProjectStatus.SANDBOX_FAILED, what: "sandbox test run" },

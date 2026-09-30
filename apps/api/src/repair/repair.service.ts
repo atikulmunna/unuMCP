@@ -19,6 +19,7 @@ import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
 import { estimateCostUsd } from "../llm/llm-pricing";
 import { SANDBOX_RUNNER, type SandboxRunner } from "../testing/sandbox-runner";
+import { REPAIR_SUITE } from "../testing/test-results";
 import { DEFAULT_BASE_URL, scanForPackaging } from "../generation/security-gate";
 import { repairConfigFromEnv, type RepairConfig } from "./repair.config";
 
@@ -46,10 +47,11 @@ export function isRepairEditable(path: string): boolean {
  * security-scan the edit → rerun the sandbox → repeat up to `maxAttempts`.
  * Tests are frozen (only {@link isRepairEditable} files are offered, and the
  * repair parser rejects any path outside that set), and every edit passes the
- * same security gate as generated code before it is applied. Every pass is
- * persisted as a `RepairAttempt` (diff + failure + outcome) so the user can
- * inspect the history; on exhaustion the project stays `TESTS_FAILED`, never a
- * silent success.
+ * same security gate as generated code before it is applied. Attempts run on a
+ * working copy: stored code changes only when an attempt passes, so an exhausted
+ * loop leaves the generated code untouched. Every pass is persisted as a
+ * `RepairAttempt` (diff + failure + outcome) so the user can inspect the history;
+ * on exhaustion the project stays `TESTS_FAILED`, never a silent success.
  *
  * One pass is ~40s (LLM) + a full sandbox rerun, so this runs on the background
  * queue (P6-6), not in-request.
@@ -121,6 +123,16 @@ export class RepairService {
         data: { status: ProjectStatus.REPAIRING_FAILED_CODE },
       });
 
+      // Attempts edit an in-memory copy of the stored (generated) sources; storage
+      // changes only when an attempt passes, so an exhausted loop never ships an
+      // unverified model edit. Each attempt builds on the previous one's code.
+      const original = new Map(
+        await Promise.all(
+          editable.map(async (a) => [a.path, await this.storage.read(a.contentUrl as string)] as const),
+        ),
+      );
+      const current = new Map(original);
+
       let failureLog = lastFailure.logExcerpt ?? "";
       let attemptsMade = 0;
       let repaired = false;
@@ -133,12 +145,7 @@ export class RepairService {
 
       for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
         attemptsMade = attempt;
-        const files: RepairFile[] = await Promise.all(
-          editable.map(async (a) => ({
-            path: a.path,
-            content: await this.storage.read(a.contentUrl as string),
-          })),
-        );
+        const files: RepairFile[] = [...current].map(([path, content]) => ({ path, content }));
 
         let changed: RepairFile[];
         try {
@@ -173,10 +180,9 @@ export class RepairService {
           break;
         }
 
-        // Diff against the pre-repair contents, then apply (temp dir + persisted artifact).
-        const before = new Map(files.map((f) => [f.path, f.content]));
+        // Diff against this attempt's starting code (so each attempt's diff is its own edit).
         const diff = changed
-          .map((f) => unifiedDiff(before.get(f.path) ?? "", f.content, f.path))
+          .map((f) => unifiedDiff(current.get(f.path) ?? "", f.content, f.path))
           .filter((d) => d.length > 0)
           .join("\n\n");
 
@@ -189,11 +195,10 @@ export class RepairService {
           break;
         }
 
+        // Apply to the working copy only (repairCode already enforces the editable allowlist).
         for (const f of changed) {
-          const artifact = byPath.get(f.path);
-          if (!artifact) continue; // repairCode already enforces the editable allowlist
+          current.set(f.path, f.content);
           await writeFile(join(dir, f.path), f.content);
-          await this.persistArtifact(artifact, f.content);
         }
 
         // Rerun the sandbox on the patched project.
@@ -201,6 +206,10 @@ export class RepairService {
         const result = await this.sandbox.run(dir);
         const durationMs = Date.now() - startedAt;
         const { summary, passed, infraFailed, log } = classifyRun(result);
+
+        // A passing fix is saved before its result is recorded, so a TESTS_PASSED
+        // project always has the tested code in storage.
+        if (passed) await this.saveRepairedSources(byPath, original, current);
 
         const outcome = passed ? RepairOutcome.passed : RepairOutcome.failed;
         await this.recordAttempt(run.id, attempt, failureLog, diff, outcome);
@@ -216,11 +225,22 @@ export class RepairService {
 
       if (!repaired) {
         // Exhausted, or stopped early before a rerun: never leave the project
-        // mid-repair — settle on TESTS_FAILED (partial output, never silent success).
-        await this.prisma.project.update({
-          where: { id: projectId },
-          data: { status: ProjectStatus.TESTS_FAILED },
-        });
+        // mid-repair. Settle on TESTS_FAILED (partial output, never silent
+        // success) with the generated code still in storage, untouched.
+        await this.prisma.$transaction([
+          this.prisma.project.update({
+            where: { id: projectId },
+            data: { status: ProjectStatus.TESTS_FAILED },
+          }),
+          this.prisma.auditEvent.create({
+            data: {
+              projectId,
+              eventType: "repair_exhausted",
+              actor: "agent",
+              summary: `Repair did not pass after ${attemptsMade} attempt(s); the generated code was kept unchanged (every attempt is in the repair history).`,
+            },
+          }),
+        ]);
         this.logger.warn(
           `Repair did not pass after ${attemptsMade} attempt(s) for project ${projectId}; left TESTS_FAILED.`,
         );
@@ -258,6 +278,18 @@ export class RepairService {
         metadata: JSON.parse(JSON.stringify({ findings: high.slice(0, 20) })),
       },
     });
+  }
+
+  /** Persist every source the passing repair changed relative to the stored version. */
+  private async saveRepairedSources(
+    byPath: Map<string, GeneratedArtifact>,
+    original: Map<string, string>,
+    current: Map<string, string>,
+  ): Promise<void> {
+    for (const [path, content] of current) {
+      const artifact = byPath.get(path);
+      if (artifact && content !== original.get(path)) await this.persistArtifact(artifact, content);
+    }
   }
 
   /** Overwrite a stored artifact in place with the repaired content + new hash. */
@@ -321,7 +353,7 @@ export class RepairService {
       this.prisma.testResult.create({
         data: {
           generationRunId: runId,
-          suite: "vitest",
+          suite: REPAIR_SUITE,
           status,
           durationMs,
           failingTestCount: summary.failed,

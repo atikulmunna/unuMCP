@@ -10,6 +10,7 @@ import { StorageService } from "../src/storage/storage.service";
 import { LlmService } from "../src/llm/llm.service";
 import { RepairService } from "../src/repair/repair.service";
 import type { SandboxRunner } from "../src/testing/sandbox-runner";
+import { latestStoredCodeResult, REPAIR_SUITE } from "../src/testing/test-results";
 
 const BUGGY = "export const ok = (r: { ok: boolean }) => { if (r.ok) throw new Error('boom'); };\n";
 const FIXED = "export const ok = (r: { ok: boolean }) => { if (!r.ok) throw new Error('boom'); };\n";
@@ -126,7 +127,7 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
   });
 
   it("stops at maxAttempts and leaves the run TESTS_FAILED (never silent success)", async () => {
-    const { projectId, runId } = await seedFailedRun("repair-exhaust");
+    const { projectId, runId, sourceUrl } = await seedFailedRun("repair-exhaust");
 
     const llm = fakeLlm(async () => ({
       files: [{ path: "src/lib.ts", content: FIXED }],
@@ -149,6 +150,44 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
     const attempts = await prisma.repairAttempt.findMany({ where: { generationRunId: runId } });
     expect(attempts).toHaveLength(2);
     expect(attempts.every((a) => a.outcome === "failed")).toBe(true);
+
+    // No failed attempt reaches storage: the generated code ships unchanged.
+    expect(await storage.read(sourceUrl)).toBe(BUGGY);
+    const exhausted = await prisma.auditEvent.findFirst({ where: { projectId, eventType: "repair_exhausted" } });
+    expect(exhausted?.summary).toMatch(/generated code was kept unchanged/);
+    // Reruns are recorded under the repair suite, so they never masquerade as the stored code's result.
+    const reruns = await prisma.testResult.findMany({ where: { generationRunId: runId, suite: REPAIR_SUITE } });
+    expect(reruns).toHaveLength(2);
+    const stored = await latestStoredCodeResult(prisma, runId);
+    expect(stored?.suite).toBe("vitest");
+    expect(stored?.logExcerpt).toBe(FAIL_LOG);
+  });
+
+  it("builds each attempt on the previous one and saves only the version that passed", async () => {
+    const { projectId, runId, sourceUrl } = await seedFailedRun("repair-iterate");
+    const MIDWAY = "export const ok = (r: { ok: boolean }) => { if (r.ok === undefined) throw new Error('boom'); };\n";
+
+    const seen: string[] = [];
+    let call = 0;
+    const llm = fakeLlm(async (input) => {
+      seen.push(input.files[0]!.content);
+      call++;
+      return { files: [{ path: "src/lib.ts", content: call === 1 ? MIDWAY : FIXED }], usage, model: "fake", latencyMs: 1 };
+    });
+    let rerun = 0;
+    const sandbox: SandboxRunner = { run: async () => sandboxLog(++rerun === 1 ? FAIL_LOG : PASS_LOG) };
+    const service = new RepairService(prisma, storage, sandbox, llm, { maxAttempts: 3, maxTokens: 100 });
+
+    expect(await service.repairFailingRun(projectId)).toEqual({ repaired: true, attempts: 2 });
+    // Attempt 2 started from attempt 1's (unsaved) edit...
+    expect(seen).toEqual([BUGGY, MIDWAY]);
+    const attempts = await prisma.repairAttempt.findMany({
+      where: { generationRunId: runId },
+      orderBy: { attemptNumber: "asc" },
+    });
+    expect(attempts[1]?.diff).toContain("-export const ok = (r: { ok: boolean }) => { if (r.ok === undefined)");
+    // ...and only the passing version was written to storage.
+    expect(await storage.read(sourceUrl)).toBe(FIXED);
   });
 
   it("records a failed attempt and settles TESTS_FAILED when the model touches a frozen test", async () => {

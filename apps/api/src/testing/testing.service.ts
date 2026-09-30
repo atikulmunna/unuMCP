@@ -9,6 +9,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { SANDBOX_RUNNER, type SandboxRunner } from "./sandbox-runner";
 import { LogBus } from "./log-bus";
+import { TEST_SUITE } from "./test-results";
 
 @Injectable()
 export class TestingService {
@@ -141,7 +142,7 @@ export class TestingService {
       this.prisma.testResult.create({
         data: {
           generationRunId: runId,
-          suite: "vitest",
+          suite: TEST_SUITE,
           status,
           durationMs,
           failingTestCount: summary.failed,
