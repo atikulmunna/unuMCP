@@ -64,6 +64,32 @@ describe("job recovery + idempotency (P6-6, NFR-006)", () => {
     expect(project.status).toBe("GENERATION_FAILED");
   });
 
+  it("recovers projects stranded mid-test or mid-repair, leaving recent ones alone", async () => {
+    const stale = new Date(Date.now() - 20 * 60 * 1000);
+    const testing = await seedProject("stranded-test");
+    const repairing = await seedProject("stranded-repair");
+    const live = await seedProject("live-test");
+    await prisma.project.update({ where: { id: testing }, data: { status: "TEST_RUNNING", updatedAt: stale } });
+    await prisma.project.update({ where: { id: repairing }, data: { status: "REPAIRING_FAILED_CODE", updatedAt: stale } });
+    // Updated just now: plausibly still running on another instance.
+    await prisma.project.update({ where: { id: live }, data: { status: "TEST_RUNNING" } });
+
+    await reconciler.reconcileStages();
+
+    const statusOf = async (id: string) =>
+      (await prisma.project.findUniqueOrThrow({ where: { id } })).status;
+    expect(await statusOf(testing)).toBe("SANDBOX_FAILED");
+    expect(await statusOf(repairing)).toBe("TESTS_FAILED");
+    expect(await statusOf(live)).toBe("TEST_RUNNING");
+
+    const events = await prisma.auditEvent.findMany({
+      where: { projectId: { in: [testing, repairing] }, eventType: "run_recovered" },
+    });
+    const summaryFor = (id: string) => events.find((e) => e.projectId === id)?.summary;
+    expect(summaryFor(testing)).toMatch(/sandbox test run did not finish/);
+    expect(summaryFor(repairing)).toMatch(/repair loop did not finish/);
+  });
+
   it("refuses a second concurrent generation run (no duplicate artifacts)", async () => {
     const projectId = await seedProject("dup");
     // Simulate a run already in flight.
