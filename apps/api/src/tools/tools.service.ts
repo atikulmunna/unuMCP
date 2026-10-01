@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { dereferenceSpec, extractEndpoints, toCycleSafe } from "@unumcp/openapi";
-import type { ExtractedEndpoint } from "@unumcp/openapi";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { dereferenceSpec, detectAuth, extractEndpoints, toCycleSafe } from "@unumcp/openapi";
+import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
 import { proposeTools } from "@unumcp/analysis";
 import type { ToolDraft } from "@unumcp/analysis";
 import { Prisma } from "@unumcp/db";
@@ -38,7 +38,12 @@ export class ToolsService {
 
     const deref = await dereferenceSpec(spec.parsedJson as object);
     const endpoints = extractEndpoints(deref);
-    const drafts = proposeTools(endpoints);
+    // The generated server's auth sends API-key headers itself; they are not tool inputs.
+    const auth = (spec.detectedAuth as unknown as DetectedAuth | null) ?? detectAuth(deref);
+    const authHeaders = auth.schemes
+      .filter((s) => s.type === "apiKey" && s.in === "header" && s.paramName)
+      .map((s) => s.paramName as string);
+    const drafts = proposeTools(endpoints, { authHeaders });
 
     // Resolve descriptions BEFORE opening the transaction so slow LLM calls never
     // hold a DB transaction open. Descriptions are produced in batches (many tools
@@ -159,6 +164,17 @@ export class ToolsService {
   }
 
   async updateTool(projectId: string, toolId: string, data: UpdateToolInput) {
+    // Two tools with one name would generate colliding files and a server that
+    // fails to start, so a rename must keep names unique within the project.
+    if (data.name) {
+      const clash = await this.prisma.toolCandidate.findFirst({
+        where: { projectId, name: data.name, id: { not: toolId } },
+        select: { id: true },
+      });
+      if (clash) {
+        throw new ConflictException(`A tool named "${data.name}" already exists in this project.`);
+      }
+    }
     const updated = await this.prisma.toolCandidate.updateMany({
       where: { id: toolId, projectId },
       data,

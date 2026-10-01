@@ -115,6 +115,36 @@ describe("tool proposal → review → approval (P2)", () => {
       .set(auth)
       .send({ name: "Bad Name" });
     expect(bad.status).toBe(400);
+
+    // Names past the 64-character client limit are refused too.
+    const long = await request(app.getHttpServer())
+      .patch(`/projects/${projectId}/tools/${toolId}`)
+      .set(auth)
+      .send({ name: `a${"_b".repeat(40)}` });
+    expect(long.status).toBe(400);
+  });
+
+  it("refuses to rename a tool to a name another tool already has", async () => {
+    const token = await makeUser("dupname");
+    const auth = { Authorization: `Bearer ${token}` };
+    const projectId = await projectWithSpec(token);
+    const [first, second] = (
+      await request(app.getHttpServer()).post(`/projects/${projectId}/tools/propose`).set(auth)
+    ).body;
+
+    const clash = await request(app.getHttpServer())
+      .patch(`/projects/${projectId}/tools/${second.id}`)
+      .set(auth)
+      .send({ name: first.name });
+    expect(clash.status).toBe(409);
+    expect(clash.body.message).toMatch(/already exists/);
+
+    // Renaming a tool to its own current name is a no-op, not a clash.
+    const same = await request(app.getHttpServer())
+      .patch(`/projects/${projectId}/tools/${first.id}`)
+      .set(auth)
+      .send({ name: first.name });
+    expect(same.status).toBe(200);
   });
 
   it("requires an enabled tool, then approves the plan", async () => {
