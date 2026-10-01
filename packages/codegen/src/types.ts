@@ -23,6 +23,8 @@ export interface McpToolDefinition {
   pathTemplate: string;
   parameters: ToolParameterBinding[];
   hasBody: boolean;
+  /** Media type of the body when not plain JSON (a `+json` type or form-urlencoded). */
+  bodyMediaType?: string;
   authRequired: boolean;
   riskLevel: RiskLevel;
 }

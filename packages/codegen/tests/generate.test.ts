@@ -119,6 +119,13 @@ describe("generateProject — tool wiring", () => {
     expect(tool).toContain("body: input.body");
   });
 
+  it("registers through registerTool (the non-deprecated SDK API)", () => {
+    const tool = files.get("src/tools/createIssue.ts")!;
+    expect(tool).toContain('server.registerTool(\n    "create_issue",\n    {\n      description: "Create an issue in a repository.",');
+    expect(tool).toContain("inputSchema: createIssueInput.shape,");
+    expect(tool).not.toContain("server.tool(");
+  });
+
   it("registers each tool in the entrypoint", () => {
     const index = files.get("src/index.ts")!;
     expect(index).toContain("registerCreateIssue(server, client);");
@@ -140,6 +147,26 @@ describe("generateProject — tool wiring", () => {
     const schema = files.get("src/schemas/createIssue.schema.ts")!;
     expect(schema).toContain("export const createIssueInput = z.object({");
     expect(schema).toContain("export type CreateIssueInput = z.infer<typeof createIssueInput>;");
+  });
+
+  it("sends a non-JSON body with its media type (form bodies are form-encoded)", () => {
+    const form = fileMap({ ...options, tools: [{ ...createIssue, bodyMediaType: "application/x-www-form-urlencoded" }] });
+    expect(form.get("src/tools/createIssue.ts")).toContain('contentType: "application/x-www-form-urlencoded"');
+    const client = form.get("src/client/apiClient.ts")!;
+    expect(client).toContain('contentType === "application/x-www-form-urlencoded" ? formEncode(body) : JSON.stringify(body)');
+    // Plain JSON bodies keep the default and pass no contentType.
+    expect(files.get("src/tools/createIssue.ts")).not.toContain("contentType:");
+  });
+
+  it("sends header inputs as request headers, skipping unset ones", () => {
+    const withHeader = fileMap({
+      ...options,
+      tools: [{ ...createIssue, parameters: [...createIssue.parameters, { name: "X-GitHub-Api-Version", in: "header" }] }],
+    });
+    const tool = withHeader.get("src/tools/createIssue.ts")!;
+    expect(tool).toContain('headers: {\n        "X-GitHub-Api-Version": input["X-GitHub-Api-Version"],\n      }');
+    const client = withHeader.get("src/client/apiClient.ts")!;
+    expect(client).toContain("if (value !== undefined && value !== null) {\n        headers[key.toLowerCase()] = String(value);");
   });
 });
 

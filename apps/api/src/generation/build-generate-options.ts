@@ -34,11 +34,20 @@ export function buildGenerateOptions(params: BuildOptionsParams): GenerateOption
   };
 }
 
+/** Path before query before header: on a name clash the earlier location owns the input. */
+const LOCATION_ORDER = { path: 0, query: 1, header: 2 } as const;
+
 function toToolDefinition(t: ApprovedTool): McpToolDefinition {
   const e = t.endpoint;
+  // Bind exactly the inputs the approved schema exposes (proposal already left
+  // out ignored and auth-managed headers), one binding per input name.
+  const inputs = (t.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+  const bound = new Set<string>();
   const parameters = e.parameters
-    .filter((p) => p.in === "path" || p.in === "query")
-    .map((p) => ({ name: p.name, in: p.in as "path" | "query" }));
+    .filter((p): p is typeof p & { in: keyof typeof LOCATION_ORDER } => p.in in LOCATION_ORDER)
+    .sort((a, b) => LOCATION_ORDER[a.in] - LOCATION_ORDER[b.in])
+    .filter((p) => p.name in inputs && !bound.has(p.name) && bound.add(p.name))
+    .map((p) => ({ name: p.name, in: p.in }));
   return {
     name: t.name,
     description: t.description,
@@ -47,6 +56,9 @@ function toToolDefinition(t: ApprovedTool): McpToolDefinition {
     pathTemplate: e.path,
     parameters,
     hasBody: e.requestSchema !== undefined,
+    ...(e.requestMediaType && e.requestMediaType !== "application/json"
+      ? { bodyMediaType: e.requestMediaType }
+      : {}),
     authRequired: e.authRequired,
     riskLevel: t.riskLevel,
   };

@@ -87,6 +87,34 @@ describe("buildGenerateOptions", () => {
     expect(create.parameters).toEqual([]);
   });
 
+  it("binds header inputs the approved schema exposes, and nothing it left out", () => {
+    const endpoint: ExtractedEndpoint = {
+      ...getEndpoint,
+      parameters: [
+        { name: "X-Api-Version", in: "header", required: false, schema: { type: "string" } },
+        { name: "X-API-Key", in: "header", required: true, schema: { type: "string" } }, // auth-managed: not an input
+        { name: "id", in: "header", required: false, schema: { type: "string" } }, // same name as the path param
+        { name: "id", in: "path", required: true, schema: { type: "string" } },
+      ],
+    };
+    const opts = buildGenerateOptions({
+      serverName: "x",
+      baseUrl: "https://x.test",
+      auth: bearerAuth,
+      tools: [
+        {
+          ...tools[0]!,
+          endpoint,
+          inputSchema: { type: "object", properties: { id: { type: "string" }, "X-Api-Version": { type: "string" } } },
+        },
+      ],
+    });
+    expect(opts.tools[0]!.parameters).toEqual([
+      { name: "id", in: "path" },
+      { name: "X-Api-Version", in: "header" },
+    ]);
+  });
+
   it("derives a bearer auth config from a declared http scheme", () => {
     const opts = buildGenerateOptions({
       serverName: "x",

@@ -167,7 +167,10 @@ export interface ApiClientOptions {
 export interface RequestOptions {
   query?: Record<string, unknown>;
   body?: unknown;
-  headers?: Record<string, string>;
+  /** Media type of \`body\`: JSON (the default), a +json type, or form-urlencoded. */
+  contentType?: string;
+  /** Header inputs; unset ones are skipped. */
+  headers?: Record<string, unknown>;
 }
 
 export class ApiClient {
@@ -182,14 +185,17 @@ export class ApiClient {
         }
       }
     }
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      ...options.headers,
-    };
+    const contentType = options.contentType ?? "application/json";
+    const headers: Record<string, string> = { "content-type": contentType };
+    for (const [key, value] of Object.entries(options.headers ?? {})) {
+      if (value !== undefined && value !== null) {
+        headers[key.toLowerCase()] = String(value);
+      }
+    }
 ${authHeaderSnippet(auth)}    const response = await fetch(url, {
       method,
       headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      body: options.body === undefined ? undefined : encodeBody(options.body, contentType),
       signal: AbortSignal.timeout(this.opts.timeoutMs ?? 30000),
     });
     const text = await response.text();
@@ -207,6 +213,29 @@ function safeJsonParse(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+function encodeBody(body: unknown, contentType: string): string {
+  return contentType === "application/x-www-form-urlencoded" ? formEncode(body) : JSON.stringify(body);
+}
+
+/** Form-urlencode a value, nesting with brackets: a[b]=1, list[0]=x. */
+export function formEncode(value: unknown): string {
+  const params = new URLSearchParams();
+  const add = (key: string, item: unknown): void => {
+    if (item === undefined || item === null) return;
+    if (Array.isArray(item)) {
+      item.forEach((entry, index) => add(key + "[" + index + "]", entry));
+    } else if (typeof item === "object") {
+      for (const [name, entry] of Object.entries(item as Record<string, unknown>)) {
+        add(key ? key + "[" + name + "]" : name, entry);
+      }
+    } else {
+      params.append(key, String(item));
+    }
+  };
+  add("", value);
+  return params.toString();
 }
 `;
   return { path: "src/client/apiClient.ts", content };
@@ -228,17 +257,18 @@ export type ${pascal}Input = z.infer<typeof ${camel}Input>;
 function toolFile(tool: McpToolDefinition): GeneratedFile {
   const camel = toCamel(tool.name);
   const pascal = toPascal(tool.name);
-  const queryParams = tool.parameters.filter((p) => p.in === "query");
-
   const requestParts: string[] = [];
-  if (queryParams.length > 0) {
-    const entries = queryParams
+  for (const location of ["query", "header"] as const) {
+    const params = tool.parameters.filter((p) => p.in === location);
+    if (params.length === 0) continue;
+    const entries = params
       .map((p) => `        ${JSON.stringify(p.name)}: input[${JSON.stringify(p.name)}]`)
       .join(",\n");
-    requestParts.push(`query: {\n${entries},\n      }`);
+    requestParts.push(`${location === "query" ? "query" : "headers"}: {\n${entries},\n      }`);
   }
   if (tool.hasBody) {
     requestParts.push("body: input.body");
+    if (tool.bodyMediaType) requestParts.push(`contentType: ${JSON.stringify(tool.bodyMediaType)}`);
   }
   const requestOptions =
     requestParts.length > 0 ? `, {\n      ${requestParts.join(",\n      ")},\n    }` : "";
@@ -248,10 +278,12 @@ import { ${camel}Input } from "../schemas/${camel}.schema.js";
 import type { ApiClient } from "../client/apiClient.js";
 
 export function register${pascal}(server: McpServer, client: ApiClient): void {
-  server.tool(
+  server.registerTool(
     ${JSON.stringify(tool.name)},
-    ${JSON.stringify(tool.description)},
-    ${camel}Input.shape,
+    {
+      description: ${JSON.stringify(tool.description)},
+      inputSchema: ${camel}Input.shape,
+    },
     async (args) => {
       const input = ${camel}Input.parse(args);
       const path = ${pathExpression(tool.pathTemplate)};
