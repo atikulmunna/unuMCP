@@ -93,7 +93,7 @@ packages/
   db/             Prisma schema + generated client
 ```
 
-> **Note on untracked docs:** `unuMCP_SRS.md`, `tasks.md`, and `CLAUDE.md` are intentionally git-ignored (local planning/spec docs). This README is the canonical project documentation.
+> **Note on untracked docs:** `unuMCP_SRS.md`, `tasks.md`, and `CLAUDE.md` are intentionally git-ignored (local planning/spec docs). This README is the canonical project documentation; [ARCHITECTURE.md](ARCHITECTURE.md) covers the design: pipeline, key decisions, trust boundaries, and what the requirement tags in code comments mean.
 
 ## Prerequisites
 
