@@ -30,6 +30,8 @@ export interface PhaseResult {
   exitCode: number | null;
   log: string;
   timedOut: boolean;
+  /** The container the phase ran in, when it ran in one (for diagnostics). */
+  container?: string;
 }
 
 export interface SandboxResult {
@@ -104,8 +106,12 @@ function runDocker(
       if (removal) void removal.then(() => resolve(result));
       else resolve(result);
     };
-    child.on("error", (err) => finish({ ok: false, exitCode: null, log: log + String(err), timedOut }));
-    child.on("close", (code) => finish({ ok: code === 0 && !timedOut, exitCode: code, log, timedOut }));
+    child.on("error", (err) =>
+      finish({ ok: false, exitCode: null, log: log + String(err), timedOut, container: containerName }),
+    );
+    child.on("close", (code) =>
+      finish({ ok: code === 0 && !timedOut, exitCode: code, log, timedOut, container: containerName }),
+    );
   });
 }
 
@@ -180,7 +186,8 @@ export async function runSandbox(options: SandboxOptions): Promise<SandboxResult
   const test = await runDocker(
     buildTestArgs(image, options.projectDir, testName, limits),
     testName,
-    options.testTimeoutMs ?? 120_000,
+    // Generous: a 913-tool server typechecks and runs 2,683 contract tests in about 95 s on one CPU.
+    options.testTimeoutMs ?? 300_000,
     maxLogBytes,
     onLog && ((chunk) => onLog("test", chunk)),
     signal,

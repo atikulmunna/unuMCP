@@ -1,4 +1,4 @@
-export { buildTestArgs, CONTAINER_NAME_PREFIX, DEFAULT_LIMITS } from "./args";
+export { buildTestArgs, CONTAINER_NAME_PREFIX, DEFAULT_LIMITS, heapMegabytes } from "./args";
 export type { SandboxLimits } from "./args";
 export {
   buildSandboxImage,

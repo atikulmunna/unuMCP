@@ -78,10 +78,11 @@ describe("inside the sandbox", () => {
     expect(result.test.ok).toBe(false);
 
     // The timeout must remove the container itself, not just the docker client:
-    // no sandbox container may be left spinning on the infinite loop.
-    const leftover = execFileSync("docker", ["ps", "-aq", "--filter", `name=${CONTAINER_NAME_PREFIX}`])
-      .toString()
-      .trim();
+    // this run's container may not be left spinning on the infinite loop. (Match
+    // its exact name: other suites may have their own sandbox runs in flight.)
+    const container = result.test.container ?? "";
+    expect(container.startsWith(CONTAINER_NAME_PREFIX)).toBe(true);
+    const leftover = execFileSync("docker", ["ps", "-aq", "--filter", `name=^/${container}$`]).toString().trim();
     expect(leftover).toBe("");
   }, 900_000);
 

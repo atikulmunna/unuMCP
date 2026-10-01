@@ -88,8 +88,10 @@ be removed with `docker image prune`.
   For further hardening, move the secrets to SSM Parameter Store (SecureString) and have
   the box pull them with its role.
 - **2 GB RAM:** the 4 GB swapfile covers the one-time `next build` and sandbox image
-  build. Each sandbox run is one container capped at 1 CPU / 512 MB, and only one runs at
-  a time (`SANDBOX_CONCURRENCY`, default 1); further runs queue.
+  build. Each sandbox run is one container capped at 1 CPU / 1 GB (enough to typecheck
+  and contract-test a 913-tool server in about 85 s), and only one runs at a time
+  (`SANDBOX_CONCURRENCY`, default 1); further runs queue. A run that still runs out of
+  memory is reported as a sandbox failure, not handed to repair.
 - **Sandbox timeouts and cancel:** every sandbox container is named `unumcp-sbx-…`, and a
   timeout or cancel force-removes it through the daemon (killing the `docker` client alone
   would leave it running).

@@ -388,7 +388,9 @@ interface RunOutcome {
 /** Classify a sandbox rerun with the same `evaluateRun` rule `TestingService` uses. */
 function classifyRun(result: SandboxResult): RunOutcome {
   const { summary, passed, infraFailed } = evaluateRun(result);
-  const log = truncateLog(redactSecrets(infraFailed ? result.install.log : result.test.log));
+  // The failing phase's log: preparation if it failed, otherwise the test run
+  // (which holds the timeout or out-of-memory evidence for an infra failure).
+  const log = truncateLog(redactSecrets(result.install.ok ? result.test.log : result.install.log));
   return { summary, passed, infraFailed, log };
 }
 

@@ -46,6 +46,17 @@ describe("evaluateRun", () => {
     expect(v).toMatchObject({ passed: false, infraFailed: true });
   });
 
+  it("treats running out of memory as infrastructure, not a code failure for repair", () => {
+    const heap = evaluateRun(
+      run("FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory", false),
+    );
+    expect(heap).toMatchObject({ passed: false, infraFailed: true });
+    const killed = evaluateRun(
+      run("", false, { test: { ok: false, exitCode: 137, log: "", timedOut: false } }),
+    );
+    expect(killed).toMatchObject({ passed: false, infraFailed: true });
+  });
+
   it("treats a test-phase timeout as infrastructure, even with a passing summary", () => {
     const v = evaluateRun(
       run(" Tests  4 passed (4)\n", true, {
