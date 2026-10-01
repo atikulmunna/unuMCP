@@ -63,6 +63,8 @@ const demoSpec = {
   },
 };
 
+const FORM = "application/x-www-form-urlencoded";
+
 function getEndpoint(doc: OpenAPIV3.Document, method: string, path: string) {
   const endpoints = extractEndpoints(doc);
   const found = endpoints.find((e) => e.method === method && e.path === path);
@@ -98,8 +100,45 @@ describe("extractEndpoints", () => {
   it("captures request and response schemas", () => {
     const createUser = getEndpoint(doc, "post", "/users");
     expect((createUser.requestSchema as any).required).toEqual(["name"]);
+    expect(createUser.requestMediaType).toBe("application/json");
     const getUser = getEndpoint(doc, "get", "/users/{id}");
     expect((getUser.responseSchema as any).properties.id.type).toBe("string");
+  });
+
+  describe("request body media types", () => {
+    const bodyOf = (content: Record<string, unknown>) =>
+      getEndpoint(
+        {
+          openapi: "3.0.3",
+          info: { title: "t", version: "1" },
+          paths: { "/x": { post: { requestBody: { content }, responses: { "200": { description: "ok" } } } } },
+        } as unknown as OpenAPIV3.Document,
+        "post",
+        "/x",
+      );
+    const obj = { schema: { type: "object", properties: { a: { type: "string" } } } };
+
+    it("prefers JSON, then a +json vendor type, then form-urlencoded", () => {
+      expect(bodyOf({ [FORM]: obj, "application/json": obj }).requestMediaType).toBe("application/json");
+      expect(bodyOf({ [FORM]: obj, "application/vnd.api+json": obj }).requestMediaType).toBe("application/vnd.api+json");
+      expect(bodyOf({ "multipart/form-data": obj, [FORM]: obj }).requestMediaType).toBe(FORM);
+    });
+
+    it("ignores media type parameters and still reads the schema", () => {
+      const e = bodyOf({ "application/json; charset=utf-8": obj });
+      expect(e.requestMediaType).toBe("application/json");
+      expect((e.requestSchema as any).properties.a.type).toBe("string");
+    });
+
+    it("accepts a supported body declared without a schema (any value)", () => {
+      expect(bodyOf({ "application/json": {} }).requestSchema).toEqual({});
+    });
+
+    it("reports a body it can't send instead of silently dropping it", () => {
+      const e = bodyOf({ "multipart/form-data": obj, "application/octet-stream": {} });
+      expect(e.requestSchema).toBeUndefined();
+      expect(e.unsupportedRequestBody).toBe("multipart/form-data, application/octet-stream");
+    });
   });
 
   it("works end-to-end on a $ref-laden spec after dereferencing", async () => {

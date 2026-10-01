@@ -45,6 +45,12 @@ export function validateSpec(doc: Record<string, unknown>): SpecValidation {
   const openapiVersion = (doc.openapi ?? doc.swagger) as string | undefined;
   if (!openapiVersion) {
     errors.push("Missing `openapi` (or `swagger`) version field.");
+  } else if (doc.openapi === undefined) {
+    // Swagger 2.0 keeps bodies in `in: body` parameters and the server in
+    // `host`/`basePath`; read as OpenAPI 3 those would silently vanish.
+    errors.push(
+      `Swagger ${openapiVersion} specs aren't supported yet. Convert it to OpenAPI 3 first (for example with the swagger2openapi CLI or the Swagger Editor's "Convert to OpenAPI 3"), then upload the result.`,
+    );
   }
 
   const paths = doc.paths as Record<string, unknown> | undefined;

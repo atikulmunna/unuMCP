@@ -32,6 +32,13 @@ describe("validateSpec", () => {
     expect(r.errors.join(" ")).toContain("version");
   });
 
+  it("refuses Swagger 2.0 with conversion advice instead of misreading it", () => {
+    const r = validateSpec({ swagger: "2.0", info: { title: "t", version: "1" }, paths: { "/x": {} } });
+    expect(r.valid).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/Swagger 2\.0 specs aren't supported yet\. Convert it to OpenAPI 3/);
+    expect(validateSpec({ openapi: "3.1.0", paths: { "/x": {} } }).valid).toBe(true);
+  });
+
   it("flags a missing paths section", () => {
     const r = validateSpec({ openapi: "3.0.0" });
     expect(r.valid).toBe(false);

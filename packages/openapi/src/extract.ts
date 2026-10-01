@@ -51,7 +51,7 @@ function buildEndpoint(
     description: op.description,
     tags: op.tags ?? [],
     parameters: mergeParameters(sharedParams, opParams),
-    requestSchema: pickRequestSchema(op),
+    ...pickRequestBody(op),
     responseSchema: pickResponseSchema(op),
     authRequired: isAuthRequired(op, globalSecurity),
     deprecated: op.deprecated ?? false,
@@ -76,9 +76,37 @@ function mergeParameters(
   }));
 }
 
-function pickRequestSchema(op: OpenAPIV3.OperationObject): JsonSchema | undefined {
-  const body = op.requestBody as OpenAPIV3.RequestBodyObject | undefined;
-  return body?.content?.["application/json"]?.schema as JsonSchema | undefined;
+const FORM_TYPE = "application/x-www-form-urlencoded";
+
+/** `application/json; charset=utf-8` → `application/json`. */
+function baseMediaType(type: string): string {
+  return type.split(";")[0]!.trim().toLowerCase();
+}
+
+/**
+ * The request body the generated client can send, preferring plain JSON, then
+ * a `+json` vendor type (`application/vnd.api+json`, `merge-patch+json`), then
+ * form-urlencoded. A body declared only in other media types is reported as
+ * unsupported rather than silently dropped.
+ */
+function pickRequestBody(
+  op: OpenAPIV3.OperationObject,
+): Pick<ExtractedEndpoint, "requestSchema" | "requestMediaType" | "unsupportedRequestBody"> {
+  const content = (op.requestBody as OpenAPIV3.RequestBodyObject | undefined)?.content ?? {};
+  const keys = Object.keys(content);
+  if (keys.length === 0) return {};
+
+  const key =
+    keys.find((k) => baseMediaType(k) === "application/json") ??
+    keys.find((k) => /^application\/[a-z0-9.+-]+\+json$/.test(baseMediaType(k))) ??
+    keys.find((k) => baseMediaType(k) === FORM_TYPE);
+  if (key === undefined) return { unsupportedRequestBody: keys.join(", ") };
+
+  return {
+    // A body declared without a schema still takes a value (any shape).
+    requestSchema: (content[key]?.schema ?? {}) as JsonSchema,
+    requestMediaType: baseMediaType(key),
+  };
 }
 
 /** Picks the schema of the first 2xx response (falling back to `default`). */
