@@ -5,10 +5,13 @@
  * emits. Although generation is deterministic, parts of the output are derived
  * from an untrusted OpenAPI spec (base URL, tool names/descriptions), so this
  * scan catches anything that smells like an injected secret, an exfiltration
- * host, or dynamic-code / shell execution.
+ * host, or dynamic-code / shell execution. Code is read through the TypeScript
+ * parser (see `code-view.ts`), so documentation strings and comments, such as
+ * a spec's docs links, aren't mistaken for behaviour.
  *
- * Pure and dependency-free: same files in → same findings out, no IO.
+ * Pure: same files in → same findings out, no IO.
  */
+import { sourceViews } from "./code-view";
 
 export type Severity = "high" | "medium" | "low";
 
@@ -110,7 +113,7 @@ const SECRET_RULES: PatternRule[] = [
   {
     rule: "hardcoded-secret",
     severity: "high",
-    pattern: /\bAIza[0-9A-Za-z_\-]{35}\b/,
+    pattern: /\bAIza[0-9A-Za-z_-]{35}\b/,
     message: "Hardcoded Google API key.",
   },
 ];
@@ -213,6 +216,30 @@ function isSafeHost(host: string, allowed: Set<string>): boolean {
   return RESERVED_SUFFIXES.some((suffix) => host.endsWith(suffix));
 }
 
+/** Second-level labels under country TLDs (`example.co.uk`, `example.com.au`). */
+const SECOND_LEVEL_LABELS = new Set(["co", "com", "org", "net", "gov", "ac", "edu"]);
+
+/**
+ * A host's registrable site, heuristically: `docs.github.com` → `github.com`,
+ * `api.example.co.uk` → `example.co.uk`. Good enough to tell an API's own docs
+ * apart from a foreign host, without shipping the public suffix list.
+ */
+function siteOf(host: string): string {
+  const labels = host.split(".");
+  const tld = labels[labels.length - 1] ?? "";
+  const sld = labels[labels.length - 2] ?? "";
+  const size = labels.length >= 3 && tld.length === 2 && SECOND_LEVEL_LABELS.has(sld) ? 3 : 2;
+  return labels.slice(-size).join(".");
+}
+
+/**
+ * "...send/post/upload/forward ... to <url>": agent-facing text telling the
+ * agent to deliver something to a host (the shape of a tool-poisoning payload),
+ * as opposed to a reference link.
+ */
+const SEND_INSTRUCTION =
+  /\b(?:send|post|upload|forward|submit|transmit|exfiltrate|leak|share|report)(?:s|ed|ing)?\b[^.!?\n]*\bto\s*\W?\s*$/i;
+
 function clip(text: string, max = 120): string {
   const trimmed = text.trim();
   return trimmed.length > max ? trimmed.slice(0, max) + "…" : trimmed;
@@ -224,6 +251,7 @@ function clip(text: string, max = 120): string {
  */
 export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {}): ScanResult {
   const allowed = new Set((options.allowedHosts ?? []).map((h) => h.toLowerCase()));
+  const allowedSites = new Set([...allowed].map(siteOf));
   const allowedDeps = new Set(options.allowedDependencies ?? DEFAULT_DEPENDENCY_ALLOWLIST);
   const findings: ScanFinding[] = [];
 
@@ -232,9 +260,43 @@ export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {
       findings.push(...checkDependencies(file, allowedDeps));
     }
 
+    // Secrets are looked for everywhere (a key is a leak even inside a
+    // description). Behavioural rules run on what can execute: for code, the
+    // parser-backed view with comments and documentation strings blanked; for
+    // Markdown, nothing; for anything else (JSON, .env.example), the raw text.
+    // Agent-facing documentation strings get their own link rule below.
     const lines = file.content.split("\n");
+    const views = viewsOf(file);
+    const behaviourLines = views.behaviour?.split("\n");
+    const docLines = views.docs?.split("\n");
+
     lines.forEach((line, idx) => {
       const lineNo = idx + 1;
+      const codeLine = behaviourLines?.[idx];
+
+      // Links in agent-facing text: the API's own site is documentation; a
+      // foreign host is worth a look (medium); telling the agent to send
+      // something to a foreign host is a tool-poisoning payload (high).
+      const docLine = docLines?.[idx];
+      if (docLine?.trim()) {
+        URL_PATTERN.lastIndex = 0;
+        let docUrl: RegExpExecArray | null;
+        while ((docUrl = URL_PATTERN.exec(docLine)) !== null) {
+          const host = hostOf(docUrl[1] ?? "");
+          if (isSafeHost(host, allowed) || allowedSites.has(siteOf(host))) continue;
+          const instructs = SEND_INSTRUCTION.test(docLine.slice(Math.max(0, docUrl.index - 160), docUrl.index));
+          findings.push({
+            rule: instructs ? "doc-send-instruction" : "outside-doc-link",
+            severity: instructs ? "high" : "medium",
+            path: file.path,
+            line: lineNo,
+            message: instructs
+              ? `Agent-facing text tells the agent to send data to "${host}" (possible tool poisoning).`
+              : `Agent-facing text links to "${host}", outside the API's own site; review it (MCP clients pass descriptions to the agent).`,
+            excerpt: clip(docUrl[0]),
+          });
+        }
+      }
 
       const record = (rule: PatternRule, matched: string) => {
         findings.push({
@@ -247,9 +309,13 @@ export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {
         });
       };
 
-      for (const rule of [...SECRET_RULES, ...DANGEROUS_RULES, ...OBFUSCATION_RULES]) {
-        const m = rule.pattern.exec(line);
-        if (m) record(rule, line);
+      for (const rule of SECRET_RULES) {
+        if (rule.pattern.test(line)) record(rule, line);
+      }
+      if (codeLine !== undefined) {
+        for (const rule of [...DANGEROUS_RULES, ...OBFUSCATION_RULES]) {
+          if (rule.pattern.test(codeLine)) record(rule, line);
+        }
       }
 
       const assign = SECRET_ASSIGNMENT.exec(line);
@@ -266,9 +332,10 @@ export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {
         });
       }
 
+      if (codeLine === undefined) return;
       URL_PATTERN.lastIndex = 0;
       let urlMatch: RegExpExecArray | null;
-      while ((urlMatch = URL_PATTERN.exec(line)) !== null) {
+      while ((urlMatch = URL_PATTERN.exec(codeLine)) !== null) {
         const host = hostOf(urlMatch[1] ?? "");
         if (!isSafeHost(host, allowed)) {
           findings.push({
@@ -286,6 +353,23 @@ export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {
 
   const passed = !findings.some((f) => f.severity === "high");
   return { passed, findings };
+}
+
+const CODE_FILE = /\.[cm]?[jt]sx?$/i;
+const MARKDOWN_FILE = /\.(md|markdown)$/i;
+
+/**
+ * The texts the rules see. `behaviour`: `null` for documentation files, the
+ * comment/doc-string-masked view for code (raw text if it doesn't parse), the
+ * raw text otherwise. `docs`: a code file's agent-facing documentation strings
+ * (`null` when there are none to separate out, including unparseable files,
+ * whose raw text already goes through the strict behaviour rules).
+ */
+function viewsOf(file: ScanFile): { behaviour: string | null; docs: string | null } {
+  if (MARKDOWN_FILE.test(file.path)) return { behaviour: null, docs: null };
+  if (!CODE_FILE.test(file.path)) return { behaviour: file.content, docs: null };
+  const views = sourceViews(file.path, file.content);
+  return views ? { behaviour: views.code, docs: views.docs } : { behaviour: file.content, docs: null };
 }
 
 /** Parse a generated package.json and flag any dependency outside the allowlist (§16.4). */

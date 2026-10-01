@@ -215,7 +215,7 @@ Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper lat
 ## Security posture
 
 - **Human approval gate** before any code is generated; high-risk tools (destructive verbs) are disabled by default.
-- **Static security scan** of generated code and of every LLM repair before it is persisted or packaged: refuses injected secrets, exfiltration hosts, and `eval`/shell patterns.
+- **Static security scan** of generated code and of every LLM repair before it is persisted or packaged: refuses injected secrets, exfiltration hosts, and `eval`/shell patterns. Code is read through the TypeScript parser, so documentation (comments, tool and field descriptions) isn't mistaken for behaviour; that agent-facing text gets its own check: the API's own docs links pass, other links are noted for review, and an instruction to send data to an outside host is refused (tool poisoning).
 - **Locked-down sandbox, no install step**: every generated server declares the same dependency set, so it is baked into a prebuilt, content-hashed image and nothing is downloaded or installed at test time (a project declaring anything else is refused before any container starts). Tests run as the image's own Vitest (never a project `npm` script) with `--network none`, a non-root user, all capabilities dropped, `no-new-privileges`, CPU/memory/pid caps, a read-only root FS, and the project mounted read-only. Runs are serialized (`SANDBOX_CONCURRENCY`), and a timeout or cancel force-removes the container through the Docker daemon.
 - **No default signing key**: the API will not boot without a `JWT_SECRET` of at least 32 characters.
 - **Prompt-injection detection** on untrusted spec text feeding the LLM; the description prompt treats spec content as untrusted data.

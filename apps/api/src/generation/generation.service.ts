@@ -10,7 +10,7 @@ import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
 import { generateProject } from "@unumcp/codegen";
 import type { GeneratedFile, RiskLevel } from "@unumcp/codegen";
 import { summarizeScan, redactSecrets } from "@unumcp/security-scan";
-import { ArtifactType, ProjectStatus } from "@unumcp/db";
+import { ArtifactType } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
@@ -114,6 +114,7 @@ export class GenerationService {
       // names/descriptions come from an untrusted spec — refuse to ship code
       // that smells of injected secrets, exfiltration hosts, or eval/shell.
       const scan = scanForPackaging(files, baseUrl);
+      const scanNotes = scan.findings.filter((f) => f.severity !== "high");
       if (!scan.passed) {
         const high = scan.findings.filter((f) => f.severity === "high");
         await this.prisma.auditEvent.create({
@@ -166,7 +167,14 @@ export class GenerationService {
             userId,
             eventType: "code_generated",
             actor: "agent",
-            summary: `Generated ${files.length} file(s) for ${approved.length} tool(s)`,
+            // Non-blocking scan notes (e.g. agent-facing links to other sites)
+            // ride along for review instead of being dropped.
+            summary:
+              `Generated ${files.length} file(s) for ${approved.length} tool(s)` +
+              (scanNotes.length > 0 ? `; ${scanNotes.length} security scan note(s) to review` : ""),
+            ...(scanNotes.length > 0
+              ? { metadata: JSON.parse(JSON.stringify({ scanNotes: scanNotes.slice(0, 50) })) }
+              : {}),
           },
         }),
       ]);

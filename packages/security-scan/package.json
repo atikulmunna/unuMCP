@@ -8,6 +8,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "typescript": "^5.6.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@unumcp/codegen": "workspace:*",
