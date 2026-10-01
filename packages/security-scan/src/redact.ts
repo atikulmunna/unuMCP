@@ -18,7 +18,7 @@ const TOKEN_PATTERNS: RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g,
   /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
   /\bsk-[A-Za-z0-9]{20,}\b/g,
-  /\bAIza[0-9A-Za-z_\-]{35}\b/g,
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,
 ];
 
 // "Authorization: Bearer xxx" / "authorization":"token xxx" — redact the value.

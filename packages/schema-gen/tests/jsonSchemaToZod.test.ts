@@ -5,7 +5,6 @@ import { jsonSchemaToZod } from "../src/jsonSchemaToZod";
 
 /** Evaluate a generated Zod source expression into a live schema. */
 function build(expr: string): z.ZodTypeAny {
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   return Function("z", `return (${expr});`)(z) as z.ZodTypeAny;
 }
 

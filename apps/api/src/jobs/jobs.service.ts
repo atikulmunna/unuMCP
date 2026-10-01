@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { ModuleRef } from "@nestjs/core";
-import { Queue, Worker, type Job } from "bullmq";
+import { Queue, Worker } from "bullmq";
 import IORedis, { type Redis } from "ioredis";
 import { TestStatus } from "@unumcp/db";
 import { GenerationService } from "../generation/generation.service";

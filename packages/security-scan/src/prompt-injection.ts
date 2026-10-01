@@ -42,7 +42,7 @@ const RULES: Rule[] = [
     // explicit injected-instruction headers / fake system turns
     category: "injected-instructions",
     pattern:
-      /(?:\bnew instructions?\b\s*[:\-]|###\s*(?:instruction|system|task)|\b(?:system|assistant|developer)\s*(?:prompt|message|mode)\b)/i,
+      /(?:\bnew instructions?\b\s*[:-]|###\s*(?:instruction|system|task)|\b(?:system|assistant|developer)\s*(?:prompt|message|mode)\b)/i,
   },
   {
     // chat-template control tokens that try to open a new turn

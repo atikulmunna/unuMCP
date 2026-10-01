@@ -189,6 +189,7 @@ The browser keeps the JWT in `localStorage` and calls same-origin `/api/*`; Next
 ```bash
 pnpm test          # all packages via Turborepo
 pnpm typecheck     # tsc --noEmit across the workspace
+pnpm lint          # ESLint (typescript-eslint + React hooks) over the whole repo
 ```
 
 Per package / app:
