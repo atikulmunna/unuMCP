@@ -80,23 +80,22 @@ describe("generateProject — untrusted text is escaped, not injected (P6-9, §1
 
 describe("generateProject — structure", () => {
   it("emits the expected project files (§12.4)", () => {
-    const paths = new Set(fileMap(options).keys());
-    for (const expected of [
-      "package.json",
-      "tsconfig.json",
-      "README.md",
+    expect([...fileMap(options).keys()]).toEqual([
       ".env.example",
-      "src/index.ts",
-      "src/config/env.ts",
+      "package.json",
+      "README.md",
       "src/client/apiClient.ts",
+      "src/config/env.ts",
       "src/errors/ApiError.ts",
-      "src/errors/ToolError.ts",
+      "src/index.ts",
       "src/schemas/createIssue.schema.ts",
+      "src/server.ts",
       "src/tools/createIssue.ts",
       "tests/createIssue.test.ts",
-    ]) {
-      expect(paths.has(expected)).toBe(true);
-    }
+      "tests/harness.ts",
+      "tests/server.test.ts",
+      "tsconfig.json",
+    ]);
   });
 
   it("pins the MCP SDK and zod in package.json", () => {
@@ -126,10 +125,13 @@ describe("generateProject — tool wiring", () => {
     expect(tool).not.toContain("server.tool(");
   });
 
-  it("registers each tool in the entrypoint", () => {
+  it("registers each tool in the server factory, which the stdio entrypoint serves", () => {
+    const server = files.get("src/server.ts")!;
+    expect(server).toContain("registerCreateIssue(server, client);");
+    expect(server).toContain('new McpServer({ name: "github-mcp-server", version: "0.1.0" })');
     const index = files.get("src/index.ts")!;
-    expect(index).toContain("registerCreateIssue(server, client);");
-    expect(index).toContain('new McpServer({ name: "github-mcp-server", version: "0.1.0" })');
+    expect(index).toContain("const server = createServer(new ApiClient(");
+    expect(index).toContain("await server.connect(new StdioServerTransport());");
   });
 
   it("injects bearer auth in the API client", () => {
@@ -146,7 +148,8 @@ describe("generateProject — tool wiring", () => {
   it("emits a Zod schema with the tool shape", () => {
     const schema = files.get("src/schemas/createIssue.schema.ts")!;
     expect(schema).toContain("export const createIssueInput = z.object({");
-    expect(schema).toContain("export type CreateIssueInput = z.infer<typeof createIssueInput>;");
+    // No unused z.infer type: Zod inference dominates typecheck memory on large servers.
+    expect(schema).not.toContain("z.infer");
   });
 
   it("sends a non-JSON body with its media type (form bodies are form-encoded)", () => {

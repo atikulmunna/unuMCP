@@ -57,7 +57,20 @@ export function exampleForSchema(schema: unknown, depth = 0): unknown {
     }, {});
   }
   if (s.oneOf?.length || s.anyOf?.length) {
-    return exampleForSchema((s.oneOf ?? s.anyOf)![0], depth + 1);
+    const variant = (s.oneOf ?? s.anyOf)![0]!;
+    // Base fields next to the union apply to every variant (schema-gen merges
+    // them the same way), so the example must carry both.
+    if (s.properties && Object.keys(s.properties).length > 0) {
+      return exampleObject(
+        {
+          type: "object",
+          properties: { ...s.properties, ...variant.properties },
+          required: [...(s.required ?? []), ...(variant.required ?? [])],
+        },
+        depth,
+      );
+    }
+    return exampleForSchema(variant, depth + 1);
   }
   if (s.enum?.length) return s.enum[0];
 
