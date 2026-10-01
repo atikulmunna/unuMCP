@@ -30,7 +30,7 @@ upload spec ─► validate + dereference ─► extract endpoints ─► propos
 | Approve | `apps/api/src/tools` | A person chooses the final tool set; names stay unique |
 | Generate | `packages/codegen`, `packages/schema-gen` | A complete TypeScript MCP server, byte-identical for the same inputs |
 | Scan | `packages/security-scan` | Refuses secrets, foreign hosts in code, eval or shell use, disallowed dependencies |
-| Test | `packages/sandbox`, `apps/api/src/testing` | The server's own tests in a locked-down, offline container |
+| Test | `packages/sandbox`, `apps/api/src/testing` | A typecheck, then the server's contract tests, in a locked-down, offline container |
 | Repair | `apps/api/src/repair`, `packages/llm` | Bounded LLM fixes to implementation files only; saved only when tests pass |
 | Package | `apps/api/src/generation` | Deterministic ZIP; a `WARNINGS.md` whenever anything is untested or failing |
 
@@ -129,13 +129,29 @@ transition and every LLM call. See `packages/db/prisma/schema.prisma`.
 
 ## Testing
 
+The platform's own tests:
+
 - Packages are unit-tested without a database or Docker (pure functions, faked
   `docker` for the sandbox lifecycle).
 - `apps/api` end-to-end tests run the real NestJS app against Postgres with a
   fake sandbox and a fake LLM.
 - Opt-in suites exercise the real Docker sandbox (proving its confinement from
-  inside a container) and the real Redis queue.
+  inside a container, and that generated servers pass their contract tests and
+  fail them when broken) and the real Redis queue.
 - CI runs lint, typecheck, and every test against Postgres on each push.
+
+The tests generated with each server are contract tests
+(`packages/codegen/src/contract.ts`). For every tool, the generator derives
+example arguments and the HTTP request the spec says they must produce, using
+rules independent of the generated handler: the path template filled and
+percent-encoded, query values in OpenAPI's default serialization (arrays get
+two items, so "repeat the key" can't pass for "join the values"), header
+inputs, the auth header, and the body in its media type. The test calls the
+tool through a real MCP client connected in memory, with `fetch` stubbed, and
+compares. It also checks that the response reaches the agent unchanged, that
+an API error becomes a tool error, and that a call missing required inputs is
+rejected without reaching the API. A server-level test checks the tool listing.
+In the sandbox, `tsc --noEmit` runs first, since Vitest only strips types.
 
 ## Reading the code: requirement tags
 
