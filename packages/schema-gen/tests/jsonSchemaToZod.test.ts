@@ -147,3 +147,53 @@ describe("jsonSchemaToZod — robustness", () => {
     expect(gen(schema)).toBe(gen(schema));
   });
 });
+
+describe("jsonSchemaToZod: base properties alongside oneOf/anyOf", () => {
+  // GitHub's create-campaign body: the fields, plus "one of these must be present".
+  const campaign = {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      code_scanning_alerts: { type: "array", items: { type: "integer" } },
+      secret_scanning_alerts: { type: "array", items: { type: "integer" } },
+    },
+    required: ["name"],
+    oneOf: [{ required: ["code_scanning_alerts"] }, { required: ["secret_scanning_alerts"] }],
+  } as unknown as JsonSchema;
+
+  it("keeps the base fields instead of collapsing to unknown", () => {
+    const src = gen(campaign);
+    expect(src).not.toContain("z.unknown()");
+    const schema = build(src);
+    expect(schema.safeParse({ name: "q3", code_scanning_alerts: [1] }).success).toBe(true);
+    expect(schema.safeParse({ name: "q3", secret_scanning_alerts: [2] }).success).toBe(true);
+    // Field types still apply.
+    expect(schema.safeParse({ name: 1, code_scanning_alerts: [1] }).success).toBe(false);
+  });
+
+  it("enforces both the base required fields and one variant's", () => {
+    const schema = build(gen(campaign));
+    expect(schema.safeParse({ code_scanning_alerts: [1] }).success).toBe(false); // no name
+    expect(schema.safeParse({ name: "q3" }).success).toBe(false); // neither alert list
+  });
+});
+
+describe("jsonSchemaToZod: required values of unconstrained type", () => {
+  const wrapper = (required: string[]) =>
+    ({ type: "object", properties: { body: {} }, required }) as unknown as JsonSchema;
+
+  it("demands a required unknown value instead of treating it as optional", () => {
+    const schema = build(gen(wrapper(["body"])));
+    expect(schema.safeParse({ body: { anything: true } }).success).toBe(true);
+    expect(schema.safeParse({ body: null }).success).toBe(true);
+    expect(schema.safeParse({}).success).toBe(false);
+  });
+
+  it("leaves an optional unknown value optional", () => {
+    expect(build(gen(wrapper([]))).safeParse({}).success).toBe(true);
+  });
+
+  it("collapses a union that includes an unconstrained member to unknown", () => {
+    expect(gen({ oneOf: [{}, { type: "string" }] } as unknown as JsonSchema)).toBe("z.unknown()");
+  });
+});

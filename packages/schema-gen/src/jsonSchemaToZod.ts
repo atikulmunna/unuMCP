@@ -62,7 +62,7 @@ function convert(
     if (schema.allOf?.length) {
       base = convertAllOf(schema, opts, ancestors, depth);
     } else if (schema.oneOf?.length || schema.anyOf?.length) {
-      base = convertUnion(schema, opts, ancestors, depth);
+      base = convertUnion(withBaseMerged(schema), opts, ancestors, depth);
     } else if (schema.enum?.length) {
       base = convertEnum(schema);
     } else {
@@ -128,7 +128,13 @@ function convertObject(
 
   const lines = entries.map(([key, sub]) => {
     let value = convert(sub, opts, ancestors, depth + 1);
-    if (!required.has(key)) value += ".optional()";
+    if (!required.has(key)) {
+      value += ".optional()";
+    } else if (value.startsWith("z.unknown()")) {
+      // `unknown` accepts undefined, so a required one would read (and be
+      // published to the agent) as optional; demand a value.
+      value += '.refine((value) => value !== undefined, { message: "Required" })';
+    }
     return `  ${JSON.stringify(key)}: ${value}`;
   });
 
@@ -198,6 +204,8 @@ function convertUnion(
   const variants = schema.oneOf ?? schema.anyOf ?? [];
   const parts = variants.map((v) => convert(v, opts, ancestors, depth + 1));
   if (parts.length === 0) return "z.unknown()";
+  // A union with an unconstrained member accepts anything.
+  if (parts.some((p) => p.startsWith("z.unknown()"))) return "z.unknown()";
   if (parts.length === 1) return parts[0]!;
   if (schema.oneOf?.length && schema.discriminator?.propertyName) {
     return `z.discriminatedUnion(${JSON.stringify(
@@ -205,6 +213,37 @@ function convertUnion(
     )}, [${parts.join(", ")}])`;
   }
   return `z.union([${parts.join(", ")}])`;
+}
+
+/**
+ * An object schema with its own `properties` next to `oneOf`/`anyOf` means
+ * "these fields, plus one of these variants" (often variants that only add a
+ * `required` list: "one of these fields must be present"). Converting just the
+ * variants would drop the base fields and turn constraint-only variants into
+ * `unknown`, so merge the base into each variant first: a union of complete
+ * objects that keeps both the fields and the constraint.
+ */
+function withBaseMerged(schema: Schema): Schema {
+  const baseProps = schema.properties ?? {};
+  if (Object.keys(baseProps).length === 0) return schema;
+  const merge = (variant: Schema): Schema => {
+    const variantType = Array.isArray(variant.type) ? variant.type[0] : variant.type;
+    if (!variant || typeof variant !== "object" || (variantType !== undefined && variantType !== "object")) {
+      return variant;
+    }
+    return {
+      type: "object",
+      properties: { ...baseProps, ...variant.properties },
+      required: [...new Set([...(schema.required ?? []), ...(variant.required ?? [])])],
+      additionalProperties: variant.additionalProperties ?? schema.additionalProperties,
+      description: variant.description,
+    };
+  };
+  return {
+    ...schema,
+    ...(schema.oneOf ? { oneOf: schema.oneOf.map(merge) } : {}),
+    ...(schema.anyOf ? { anyOf: schema.anyOf.map(merge) } : {}),
+  };
 }
 
 function applyModifiers(base: string, schema: Schema, opts: Required<ZodGenOptions>): string {
