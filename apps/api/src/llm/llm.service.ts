@@ -9,6 +9,7 @@ import {
   repairCode,
   type LlmClient,
   type RepairInput,
+  type ProposedRisk,
   type RepairResult,
   type ToolProposalInput,
 } from "@unumcp/llm";
@@ -133,21 +134,35 @@ export class LlmService {
     inputs: ToolProposalInput[],
     ctx?: LlmTraceContext,
   ): Promise<(string | null)[]> {
-    if (!this.client) return inputs.map(() => null);
-    if (inputs.length === 0) return [];
+    return (await this.describeAndRateToolsBatch(inputs, ctx)).descriptions;
+  }
+
+  /**
+   * {@link describeToolsBatch} plus the model's risk rating per tool, from the
+   * same single call. Ratings are a second opinion: callers may only use one to
+   * raise a tool's deterministic risk. Never throws; on any failure every
+   * description and rating is `null`.
+   */
+  async describeAndRateToolsBatch(
+    inputs: ToolProposalInput[],
+    ctx?: LlmTraceContext,
+  ): Promise<{ descriptions: (string | null)[]; risks: (ProposedRisk | null)[] }> {
+    const none = () => ({ descriptions: inputs.map(() => null), risks: inputs.map(() => null) });
+    if (!this.client || inputs.length === 0) return none();
     const inputSummary = `${inputs.length} tool(s): ${inputs.map((i) => i.toolName).join(", ")}`;
     try {
       const result = await proposeToolDescriptions(this.client, inputs);
       const filled = result.descriptions.filter((d) => d !== null).length;
+      const rated = result.risks.filter((r) => r !== null).length;
       await this.recordTrace(ctx, {
         toolName: "propose_tool_descriptions_batch",
         inputSummary,
-        outputSummary: `described ${filled}/${inputs.length} tool(s)`,
+        outputSummary: `described ${filled}/${inputs.length} tool(s), rated ${rated}`,
         latencyMs: result.latencyMs,
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
       });
-      return result.descriptions;
+      return { descriptions: result.descriptions, risks: result.risks };
     } catch (err) {
       await this.recordTrace(ctx, {
         toolName: "propose_tool_descriptions_batch",
@@ -157,7 +172,7 @@ export class LlmService {
       this.logger.warn(
         `LLM batch description failed for ${inputs.length} tool(s) (${err instanceof Error ? err.name : "error"}); using deterministic fallback.`,
       );
-      return inputs.map(() => null);
+      return none();
     }
   }
 

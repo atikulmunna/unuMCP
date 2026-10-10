@@ -11,8 +11,9 @@ export {
   proposeToolDescriptions,
   parseDescription,
   parseBatchDescriptions,
+  parseBatchRisks,
 } from "./propose";
-export type { ToolProposalInput, ToolProposal, BatchToolProposal } from "./propose";
+export type { ToolProposalInput, ToolProposal, BatchToolProposal, ProposedRisk } from "./propose";
 export { repairCode, parseRepairFiles } from "./repair";
 export type { RepairInput, RepairResult, RepairFile } from "./repair";
 export { diffLines, unifiedDiff } from "./diff";

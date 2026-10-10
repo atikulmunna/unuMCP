@@ -115,7 +115,7 @@ describe("internal agent tool-call trace (P5-5, FR-031)", () => {
     expect(meta.toolName).toBe("propose_tool_descriptions_batch");
     expect(meta.status).toBe("ok");
     expect(String(meta.inputSummary)).toMatch(/1 tool\(s\)/);
-    expect(String(meta.outputSummary)).toBe("described 1/1 tool(s)");
+    expect(String(meta.outputSummary)).toBe("described 1/1 tool(s), rated 0");
     expect(meta.inputTokens).toBe(120);
     expect(meta.outputTokens).toBe(14);
 

@@ -1,11 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { dereferenceSpec, detectAuth, extractEndpoints, toCycleSafe } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
-import { proposeTools } from "@unumcp/analysis";
+import { maxRisk, proposeTools } from "@unumcp/analysis";
 import type { ToolDraft } from "@unumcp/analysis";
 import { Prisma } from "@unumcp/db";
 import { detectPromptInjection } from "@unumcp/security-scan";
-import type { ToolProposalInput } from "@unumcp/llm";
+import type { ProposedRisk, ToolProposalInput } from "@unumcp/llm";
 import { PrismaService } from "../prisma/prisma.service";
 import { LlmService } from "../llm/llm.service";
 import { chunk, mapWithConcurrency } from "../common/concurrency";
@@ -49,9 +49,21 @@ export class ToolsService {
     // hold a DB transaction open. Descriptions are produced in batches (many tools
     // per LLM call) run with bounded concurrency (P2-6, NFR-007b); background
     // execution is P6-6. Any description the model omits falls back to the draft.
-    const descriptions = this.llm.enabled
+    const { descriptions, risks } = this.llm.enabled
       ? await this.describeBatched(projectId, drafts, endpoints)
-      : drafts.map((d) => d.description);
+      : { descriptions: drafts.map((d) => d.description), risks: drafts.map(() => null) };
+
+    // The model's risk rating is a second opinion that can only raise the rules'
+    // score (it reads the description too, e.g. a `force` flag a path can't
+    // show). A tool raised to high or critical starts disabled like any other.
+    const finals = drafts.map((d, i) => {
+      const riskLevel = maxRisk(d.riskLevel, risks[i] ?? d.riskLevel);
+      const enabled = d.enabledByDefault && riskLevel !== "high" && riskLevel !== "critical";
+      return { riskLevel, enabled, raised: riskLevel !== d.riskLevel };
+    });
+    const raised = drafts.flatMap((d, i) =>
+      finals[i]!.raised ? [{ tool: d.name, from: d.riskLevel, to: finals[i]!.riskLevel }] : [],
+    );
 
     // Flag (don't block) untrusted spec text that looks like a prompt-injection
     // attempt (P6-2, §16.2 "flag suspicious descriptions"). The LLM is already
@@ -76,8 +88,8 @@ export class ToolsService {
             name: d.name,
             description: descriptions[i] ?? d.description,
             inputSchema: toCycleSafe(d.inputSchema) as unknown as Prisma.InputJsonValue,
-            enabled: d.enabledByDefault,
-            riskLevel: d.riskLevel,
+            enabled: finals[i]!.enabled,
+            riskLevel: finals[i]!.riskLevel,
             createdBy: "agent",
           },
         });
@@ -89,6 +101,18 @@ export class ToolsService {
         }
       }
       await tx.project.update({ where: { id: projectId }, data: { status: "TOOLS_PROPOSED" } });
+
+      if (raised.length > 0) {
+        await tx.auditEvent.create({
+          data: {
+            projectId,
+            eventType: "risk_raised",
+            actor: "agent",
+            summary: `The model rated ${raised.length} tool(s) riskier than the rules did: ${raised.map((r) => `${r.tool} (${r.from} to ${r.to})`).join(", ")}`,
+            metadata: { raised } as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
 
       if (flagged.length > 0) {
         await tx.auditEvent.create({
@@ -117,16 +141,17 @@ export class ToolsService {
     projectId: string,
     drafts: ToolDraft[],
     endpoints: (ExtractedEndpoint | undefined)[],
-  ): Promise<string[]> {
+  ): Promise<{ descriptions: string[]; risks: (ProposedRisk | null)[] }> {
     const cfg = proposalConfigFromEnv();
     const inputs = drafts.map((d, i) => this.toProposalInput(d, endpoints[i]));
     const batches = chunk(inputs, cfg.batchSize);
     const results = await mapWithConcurrency(batches, cfg.concurrency, (batch) =>
-      this.llm.describeToolsBatch(batch, { projectId }),
+      this.llm.describeAndRateToolsBatch(batch, { projectId }),
     );
     // chunk() and mapWithConcurrency() both preserve order, so flattening realigns to `inputs`.
-    const flat = results.flat();
-    return drafts.map((d, i) => flat[i] ?? d.description);
+    const descriptions = results.flatMap((r) => r.descriptions);
+    const risks = results.flatMap((r) => r.risks);
+    return { descriptions: drafts.map((d, i) => descriptions[i] ?? d.description), risks };
   }
 
   /** Build the LLM proposal facts for one draft (name/schema stay deterministic elsewhere). */

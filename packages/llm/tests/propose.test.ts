@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseBatchDescriptions,
+  parseBatchRisks,
   parseDescription,
   proposeToolDescription,
   proposeToolDescriptions,
@@ -142,5 +143,26 @@ describe("proposeToolDescriptions (P2-6, batched)", () => {
 
   it("parseBatchDescriptions rejects a response without a descriptions array", () => {
     expect(() => parseBatchDescriptions('{"foo":1}')).toThrow(/descriptions/i);
+  });
+
+  it("returns the model's risk ratings aligned to the inputs, null where missing or invalid", async () => {
+    const { client, seen } = fakeClient(
+      JSON.stringify({
+        descriptions: [
+          { name: "get_issue", description: "Fetches an issue.", risk: "LOW" },
+          { name: "create_issue", description: "Creates an issue.", risk: "catastrophic" },
+        ],
+      }),
+    );
+    const result = await proposeToolDescriptions(client, inputs);
+    expect(result.risks).toEqual([null, "low"]); // create_issue's rating isn't a level
+    // The model is told never to rate below the deterministic level.
+    expect(seen[0]!.messages[0]!.content).toMatch(/Never rate a tool below the riskLevel/);
+  });
+
+  it("parseBatchRisks tolerates output without ratings or JSON", () => {
+    expect(parseBatchRisks('{"descriptions":[{"name":"a","description":"A"}]}').size).toBe(0);
+    expect(parseBatchRisks("not json").size).toBe(0);
+    expect(parseBatchRisks('{"descriptions":[{"name":"a","risk":"high"}]}').get("a")).toBe("high");
   });
 });

@@ -190,7 +190,7 @@ describe("LlmService.describeToolsBatch (P2-6, FR-031)", () => {
     expect(record).toHaveBeenCalledOnce();
     expect(record.mock.calls[0]![0]).toMatchObject({
       toolName: "propose_tool_descriptions_batch",
-      outputSummary: "described 2/2 tool(s)",
+      outputSummary: "described 2/2 tool(s), rated 0",
       inputTokens: 300,
     });
   });
