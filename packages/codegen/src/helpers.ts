@@ -105,3 +105,34 @@ function exampleObject(s: Schema, depth: number): Record<string, unknown> {
   }
   return out;
 }
+
+/**
+ * Whether a tool cannot change anything: GET and HEAD only. A POST that only
+ * searches is still treated as a write; a wrong "read-only" would let it run
+ * in read-only mode and skip dry runs.
+ */
+export function isReadOnly(tool: { method: string }): boolean {
+  const method = tool.method.toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
+
+/** The MCP behavior hints a client shows for a tool (a hint, not a guarantee). */
+export function toolAnnotations(tool: { method: string; riskLevel: string }): Record<string, boolean> {
+  // Every tool calls an outside API, so all of them are open-world.
+  if (isReadOnly(tool)) return { readOnlyHint: true, openWorldHint: true };
+  const method = tool.method.toUpperCase();
+  return {
+    readOnlyHint: false,
+    destructiveHint: method === "DELETE" || tool.riskLevel === "high" || tool.riskLevel === "critical",
+    idempotentHint: IDEMPOTENT_METHODS.has(method),
+    openWorldHint: true,
+  };
+}
+
+/** A display title from a tool name: `get_widget` becomes "Get widget". */
+export function toolTitle(name: string): string {
+  const words = name.replace(/[_-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

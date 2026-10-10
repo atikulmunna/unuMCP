@@ -4,6 +4,14 @@ import type { AuthConfig, McpToolDefinition } from "./types";
 /** The API key the generated tests configure; auth expectations are derived from it. */
 export const TEST_API_KEY = "test-api-key";
 
+/** The risk at and above which a generated server asks the user first, unless configured otherwise. */
+export const DEFAULT_CONFIRM_RISK = "high";
+
+/** Whether a tool asks the user before running under the default policy. */
+export function confirmsByDefault(tool: Pick<McpToolDefinition, "riskLevel">): boolean {
+  return tool.riskLevel === "high" || tool.riskLevel === "critical";
+}
+
 const FORM_TYPE = "application/x-www-form-urlencoded";
 
 /**

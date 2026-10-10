@@ -77,8 +77,9 @@ describe.skipIf(!RUN)("generated servers in the real sandbox (contract tests + t
     dirs.push(dir);
     const verdict = evaluateRun(await runSandbox({ projectDir: dir, testTimeoutMs: 120_000 }));
     expect(verdict.passed).toBe(true);
-    // 3 per tool with required inputs + the server listing.
-    expect(verdict.summary).toMatchObject({ passed: 7, failed: 0 });
+    // get_widget (low, read-only): 4. create_charge (high): 6, with approval,
+    // decline, no-elicitation and dry-run cases. The server's listing and policy: 5.
+    expect(verdict.summary).toMatchObject({ passed: 15, failed: 0 });
   }, 900_000);
 
   it("fails on a type error before any test runs", async () => {
@@ -94,6 +95,20 @@ describe.skipIf(!RUN)("generated servers in the real sandbox (contract tests + t
     expect(verdict.infraFailed).toBe(false); // a code failure: repair gets the compiler output
     expect(verdict.summary.total).toBe(0);
     expect(result.test.log).toMatch(/error TS2322/);
+  }, 900_000);
+
+  it("fails when a risky tool runs without the user's approval", async () => {
+    // Type-correct, so the typecheck passes and the contract tests must catch it.
+    const dir = await generatedServer({
+      file: "src/policy.ts",
+      from: "const refusal = await askUser(server, tool, planned);",
+      to: "const refusal: string | null = null;",
+    });
+    dirs.push(dir);
+    const verdict = evaluateRun(await runSandbox({ projectDir: dir, testTimeoutMs: 120_000 }));
+    expect(verdict.passed).toBe(false);
+    // create_charge's request, decline and no-elicitation tests.
+    expect(verdict.summary.failed).toBe(3);
   }, 900_000);
 
   it("fails a contract test when a tool calls the wrong endpoint", async () => {
