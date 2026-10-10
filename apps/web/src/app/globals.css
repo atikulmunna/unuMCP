@@ -27,7 +27,7 @@
     @apply bg-clay/15 text-ink;
   }
 
-  /* A faint workbench grid — reads as drafting paper, not a hero gradient. */
+  /* A faint workbench grid; reads as drafting paper, not a hero gradient. */
   .bg-blueprint {
     background-image:
       linear-gradient(to right, rgba(27, 26, 22, 0.035) 1px, transparent 1px),

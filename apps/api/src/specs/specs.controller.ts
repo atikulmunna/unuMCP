@@ -12,7 +12,7 @@ export class SpecsController {
   constructor(private readonly specs: SpecsService) {}
 
   @Post("spec/upload")
-  // Spec upload parses + dereferences an untrusted document — cap it (§24).
+  // Spec upload parses + dereferences an untrusted document, so cap it (§24).
   @RateLimit({ limit: 20, windowMs: 60_000 })
   upload(
     @Param("projectId") projectId: string,

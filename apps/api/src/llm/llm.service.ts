@@ -4,7 +4,6 @@ import {
   ANTHROPIC_DEFAULT_MODEL,
   GeminiClient,
   NimClient,
-  proposeToolDescription,
   proposeToolDescriptions,
   repairCode,
   type LlmClient,
@@ -92,56 +91,13 @@ export class LlmService {
   }
 
   /**
-   * LLM-authored tool description, or `null` to signal "use the fallback".
-   * When a project `ctx` is given, the call is traced (FR-031) — success or error.
-   */
-  async describeTool(input: ToolProposalInput, ctx?: LlmTraceContext): Promise<string | null> {
-    if (!this.client) return null;
-    const inputSummary = `${input.method.toUpperCase()} ${input.path} → ${input.toolName}`;
-    try {
-      const result = await proposeToolDescription(this.client, input);
-      await this.recordTrace(ctx, {
-        toolName: "propose_tool_description",
-        inputSummary,
-        outputSummary: result.description,
-        latencyMs: result.latencyMs,
-        inputTokens: result.usage.inputTokens,
-        outputTokens: result.usage.outputTokens,
-      });
-      return result.description;
-    } catch (err) {
-      await this.recordTrace(ctx, {
-        toolName: "propose_tool_description",
-        inputSummary,
-        error: errText(err),
-      });
-      // Never surface provider detail or block the pipeline; log a safe note.
-      this.logger.warn(
-        `LLM description failed for "${input.toolName}" (${err instanceof Error ? err.name : "error"}); using deterministic fallback.`,
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Describe a batch of tools in one LLM round-trip (P2-6, NFR-007b). Returns a
-   * `(string | null)[]` aligned to `inputs`, with `null` where the model omitted
-   * a usable description so the caller keeps its deterministic draft. Like
-   * `describeTool` it **never throws** — a provider/parse error yields all-`null`
-   * (full fallback) and, when a project `ctx` is given, an error trace (FR-031).
-   */
-  async describeToolsBatch(
-    inputs: ToolProposalInput[],
-    ctx?: LlmTraceContext,
-  ): Promise<(string | null)[]> {
-    return (await this.describeAndRateToolsBatch(inputs, ctx)).descriptions;
-  }
-
-  /**
-   * {@link describeToolsBatch} plus the model's risk rating per tool, from the
-   * same single call. Ratings are a second opinion: callers may only use one to
-   * raise a tool's deterministic risk. Never throws; on any failure every
-   * description and rating is `null`.
+   * Describe and rate a batch of tools in one LLM round-trip (P2-6, NFR-007b).
+   * Both arrays are aligned to `inputs`. A `null` description means the model
+   * gave no usable one, so the caller keeps its deterministic draft; a rating is
+   * a second opinion that callers may only use to raise a tool's risk. Never
+   * throws: an LLM hiccup must not block tool proposal, so any failure yields
+   * all `null`, a safe log line, and, when a project `ctx` is given, an error
+   * trace (FR-031).
    */
   async describeAndRateToolsBatch(
     inputs: ToolProposalInput[],
@@ -178,8 +134,8 @@ export class LlmService {
 
   /**
    * One LLM repair pass over the failing implementation files (P4-5, FR-026).
-   * Unlike `describeTool`, this throws on a provider/parse error so the repair
-   * orchestrator can record the failed attempt and stop the bounded loop — a
+   * Unlike describing, this throws on a provider/parse error so the repair
+   * orchestrator can record the failed attempt and stop the bounded loop; a
    * silent `null` would be mistaken for "no change needed". Tests stay frozen by
    * construction (the parser rejects any test path).
    */

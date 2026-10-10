@@ -28,7 +28,7 @@ desktop.ini
 # Vendored spec fixtures for spikes (re-downloadable, large)
 spikes/specs/
 
-# Local-only planning & spec docs (project rule — keep untracked)
+# Local-only planning & spec docs (project rule: keep untracked)
 unuMCP_SRS.md
 tasks.md
 CLAUDE.md

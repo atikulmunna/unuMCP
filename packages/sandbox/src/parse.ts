@@ -34,7 +34,7 @@ function count(body: string, re: RegExp): number {
 }
 
 /**
- * Bound a log to `maxBytes`, keeping the tail — Vitest failures and the summary
+ * Bound a log to `maxBytes`, keeping the tail: Vitest failures and the summary
  * appear at the end, so the tail is the useful part for diagnosis and repair.
  */
 export function truncateLog(log: string, maxBytes = 16_000): string {

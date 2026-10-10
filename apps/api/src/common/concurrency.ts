@@ -1,7 +1,7 @@
 /**
  * Map over `items` running at most `limit` calls of `fn` at once, preserving
  * input order in the results. Used to keep LLM fan-out polite without pulling in
- * a dependency — now driving concurrent description *batches* (P2-6).
+ * a dependency; it now drives concurrent description *batches* (P2-6).
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],

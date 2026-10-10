@@ -14,7 +14,7 @@ export class CompletionService {
 
   /**
    * Finalize a project whose tests passed (P5-7). Computes any non-blocking
-   * warnings and lands the terminal state — `COMPLETED` when clean, or
+   * warnings and lands the terminal state: `COMPLETED` when clean, or
    * `COMPLETED_WITH_WARNINGS` so the user can still download the partial output
    * (§26.4). Idempotent-ish: re-completing recomputes from current facts.
    */

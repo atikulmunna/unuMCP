@@ -69,7 +69,7 @@ USERDATA="$(mktemp)"; trap 'rm -f "$USERDATA"' EXIT
   tail -n +2 "$ROOT/deploy/bootstrap.sh"
 } > "$USERDATA"
 
-# On Windows/git-bash the native aws.exe can't read an MSYS /tmp path — translate it.
+# On Windows/git-bash the native aws.exe can't read an MSYS /tmp path, so translate it.
 UD_REF="file://$USERDATA"
 if command -v cygpath >/dev/null 2>&1; then UD_REF="file://$(cygpath -w "$USERDATA")"; fi
 

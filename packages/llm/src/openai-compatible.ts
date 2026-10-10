@@ -26,7 +26,7 @@ interface ChatCompletionResponse {
  * A client for any provider that exposes the OpenAI `/chat/completions` API
  * (Bearer auth, `messages`/`response_format`, `choices[].message.content`).
  * NVIDIA NIM and Google Gemini both offer this shape, so a single implementation
- * over native `fetch` (no SDK dependency) serves both — each provider is just a
+ * over native `fetch` (no SDK dependency) serves both; each provider is just a
  * base URL + default model. The `provider` label only flavours error messages.
  */
 export class OpenAiCompatibleClient implements LlmClient {

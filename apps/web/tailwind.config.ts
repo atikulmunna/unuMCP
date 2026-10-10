@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * unuMCP visual language — an editorial workbench, not a SaaS template.
+ * unuMCP visual language: an editorial workbench, not a SaaS template.
  *  - warm paper surface + near-black ink, hairline borders instead of big shadows
  *  - one warm accent (clay/terracotta) for "your turn" moments; status colors
  *    are reserved strictly for pipeline state (pass/fail/warn/run)

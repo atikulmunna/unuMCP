@@ -15,7 +15,7 @@ export function parseSpec(raw: string): ParseResult {
     const doc = JSON.parse(trimmed);
     if (doc && typeof doc === "object") return { ok: true, doc };
   } catch {
-    // not JSON — try YAML next
+    // not JSON; try YAML next
   }
 
   try {

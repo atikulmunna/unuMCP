@@ -14,7 +14,7 @@ let app: INestApplication;
 let prisma: PrismaService;
 const emails: string[] = [];
 
-// The fake sandbox returns whatever the current test sets — no Docker needed.
+// The fake sandbox returns whatever the current test sets, so no Docker needed.
 // In "blockUntilAbort" mode it hangs until the run's signal aborts, so a cancel
 // request can be exercised deterministically.
 let nextResult: SandboxResult;
@@ -258,8 +258,8 @@ describe("live logs + cancel (P4-8, NFR-008)", () => {
     const projectId = await generatedProject(token);
 
     // Open the SSE stream, then publish on a ticker until it has subscribed and
-    // received the events (the bus has no replay, so a late subscriber — the
-    // ownership guard does a DB lookup first — just catches the next tick).
+    // received the events (the bus has no replay, so a late subscriber (the
+    // ownership guard does a DB lookup first) just catches the next tick).
     const streamReq = request(app.getHttpServer()).get(`/projects/${projectId}/test/stream`).set(auth);
     const bus = app.get(LogBus, { strict: false });
     const ticker = setInterval(() => {
@@ -300,7 +300,7 @@ describe("live logs + cancel (P4-8, NFR-008)", () => {
         .then((r) => r);
 
       // Poll cancel until it finds the in-flight run (its controller is registered
-      // as soon as the run starts) — avoids racing the run's startup.
+      // as soon as the run starts), which avoids racing the run's startup.
       let cancelled = false;
       for (let i = 0; i < 100 && !cancelled; i++) {
         await new Promise((r) => setTimeout(r, 50));

@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 
   console.log(`LLM enabled: ${llm.enabled}  |  MAX_REPAIR_ATTEMPTS=${process.env.MAX_REPAIR_ATTEMPTS ?? "2"}`);
   if (!llm.enabled) {
-    console.error("LLM disabled — set GEMINI_API_KEY. Aborting.");
+    console.error("LLM disabled: set GEMINI_API_KEY. Aborting.");
     await app.close();
     process.exitCode = 1;
     return;
@@ -120,7 +120,7 @@ async function main(): Promise<void> {
       console.log(`      • attempt ${at.attemptNumber}: ${at.outcome} (diff ${at.diff.length} chars)`);
     }
 
-    step(6, "Audit trail — repair events + FR-031 repair_code trace");
+    step(6, "Audit trail: repair events + FR-031 repair_code trace");
     const audit = await call("GET", `/projects/${id}/audit`);
     const traces = audit.filter((e: any) => e.eventType === "llm_tool_call");
     const repairTrace = traces.find((e: any) => e.metadata?.toolName === "repair_code");

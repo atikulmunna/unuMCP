@@ -1,4 +1,4 @@
-/** className joiner — keeps conditional Tailwind readable without a dependency. */
+/** className joiner: keeps conditional Tailwind readable without a dependency. */
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }

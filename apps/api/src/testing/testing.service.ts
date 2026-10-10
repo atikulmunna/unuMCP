@@ -26,7 +26,7 @@ export class TestingService {
   /**
    * Run the generated server's tests in the two-phase sandbox (P4-3/4). The
    * project is materialized from its stored artifacts into a clean temp dir (no
-   * host `node_modules` — finding F-3), installed then tested offline, and the
+   * host `node_modules`, finding F-3), installed then tested offline, and the
    * outcome is persisted as a `TestResult` with the project state advanced.
    */
   async runTests(projectId: string) {

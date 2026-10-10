@@ -64,7 +64,7 @@ describe.skipIf(!REDIS)("background queue round-trip (P6-6, requires Redis)", ()
     await request(app.getHttpServer()).post(`/projects/${projectId}/tools/propose`).set(auth);
     await request(app.getHttpServer()).post(`/projects/${projectId}/tools/approve`).set(auth);
 
-    // Enqueue — returns a queued handle, not the result.
+    // Enqueue: returns a queued handle, not the result.
     const enq = await request(app.getHttpServer()).post(`/projects/${projectId}/generation`).set(auth);
     expect(enq.status).toBe(200);
     expect(enq.body.status).toBe("queued");

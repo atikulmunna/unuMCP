@@ -31,14 +31,14 @@ interface ErrorBody {
 }
 
 /**
- * Single chokepoint for error responses (P6-8, §17). Every error — whether a
- * deliberate `HttpException` from a service or an unexpected throw — is shaped
+ * Single chokepoint for error responses (P6-8, §17). Every error, whether a
+ * deliberate `HttpException` from a service or an unexpected throw, is shaped
  * into one envelope that is:
  *   - **clear & actionable**: the service's own message is preserved for 4xx;
  *   - **free of secrets**: the client-facing message and any detail are run
  *     through `redactSecrets` (NFR-001) so a leaked token never reaches the wire;
- *   - **non-leaky for 5xx**: unexpected errors return a generic message — never
- *     a raw internal message or stack — plus a `correlationId`;
+ *   - **non-leaky for 5xx**: unexpected errors return a generic message (never
+ *     a raw internal message or stack) plus a `correlationId`;
  *   - **linked to logs**: the same `correlationId` is logged server-side with the
  *     (redacted) detail, so developers can trace it (§17.2).
  */
@@ -59,7 +59,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     let errors: unknown;
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
-      // Any 5xx — an unexpected throw or even an explicit 5xx — is treated as
+      // Any 5xx (an unexpected throw or even an explicit 5xx) is treated as
       // not-client-safe: never surface its text or stack, just a generic,
       // traceable message.
       message =
@@ -88,7 +88,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = "An unexpected error occurred.";
     }
 
-    // Client-facing sanitization (NFR-001): redact even deliberate 4xx messages —
+    // Client-facing sanitization (NFR-001): redact even deliberate 4xx messages:
     // an actionable message must never carry a secret echoed back from input.
     message = redactSecrets(message);
     if (errors !== undefined) {

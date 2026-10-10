@@ -20,7 +20,7 @@ function fakeClient(text: string): { client: LlmClient; seen: LlmRequest[] } {
 
 const brokenFile = {
   path: "src/client/apiClient.ts",
-  content: "export const x = 1; // if (response.ok) throw — bug here\n",
+  content: "export const x = 1; // if (response.ok) throw: bug here\n",
 };
 
 const goodResponse = [
@@ -46,7 +46,7 @@ describe("repairCode", () => {
     const user = seen[0]!.messages[1]!.content;
     expect(user).toContain("throws on a non-2xx response"); // failure signal
     expect(user).toContain("src/client/apiClient.ts"); // file under repair
-    // Tests are frozen — the system prompt must forbid editing them.
+    // Tests are frozen: the system prompt must forbid editing them.
     expect(seen[0]!.messages[0]!.content).toMatch(/never modify.*test/i);
   });
 

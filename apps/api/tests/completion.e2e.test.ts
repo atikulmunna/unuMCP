@@ -13,7 +13,7 @@ let app: INestApplication;
 let prisma: PrismaService;
 const emails: string[] = [];
 
-// Tests always pass in this suite — completion is what's under test.
+// Tests always pass in this suite; completion is what's under test.
 const passingResult: SandboxResult = {
   install: { ok: true, exitCode: 0, log: "added 60 packages", timedOut: false },
   test: { ok: true, exitCode: 0, log: "      Tests  3 passed (3)\n", timedOut: false },

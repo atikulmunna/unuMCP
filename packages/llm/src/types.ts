@@ -19,7 +19,7 @@ export interface LlmUsage {
 
 export interface LlmRequest {
   messages: LlmMessage[];
-  /** Default 0 — structural/proposal calls must be deterministic (P0-4). */
+  /** Default 0: structural/proposal calls must be deterministic (P0-4). */
   temperature?: number;
   maxTokens?: number;
   /** Hint the provider to emit a single JSON object when supported. */
@@ -37,7 +37,7 @@ export interface LlmClient {
   complete(request: LlmRequest): Promise<LlmCompletion>;
 }
 
-/** Minimal fetch surface we depend on — injectable so tests need no network. */
+/** Minimal fetch surface we depend on, injectable so tests need no network. */
 export type FetchLike = (
   url: string,
   init: {

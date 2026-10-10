@@ -7,7 +7,7 @@ const ACTOR_TONE: Record<AuditEvent["actor"], string> = {
   system: "bg-ink-faint",
 };
 
-/** A quiet, append-only log of what happened to this project — the provenance
+/** A quiet, append-only log of what happened to this project: the provenance
  *  record that makes the build trustworthy. */
 export function AuditTrail({ events }: { events: AuditEvent[] }) {
   if (events.length === 0) {

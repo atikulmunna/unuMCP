@@ -3,8 +3,8 @@
  * GitHub `issues/create` endpoint and write it to spikes/out/.
  *
  * The tool NAME and DESCRIPTION are hand-authored here, standing in for the
- * LLM's P0-4 output (which is blocked on an API key). Everything else — input
- * schema, handler, client, tests — is deterministic codegen.
+ * LLM's P0-4 output (which is blocked on an API key). Everything else (input
+ * schema, handler, client, tests) is deterministic codegen.
  *
  * Run: pnpm tsx spikes/generate-github-server.ts
  */

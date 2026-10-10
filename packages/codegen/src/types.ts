@@ -50,3 +50,8 @@ export interface GeneratedFile {
   path: string;
   content: string;
 }
+
+/** {@link GenerateOptions} with every default filled in (internal to codegen). */
+export type NormalizedOptions = Required<Omit<GenerateOptions, "displayName">> & {
+  displayName: string;
+};

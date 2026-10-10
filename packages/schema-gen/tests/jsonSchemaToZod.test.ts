@@ -12,7 +12,7 @@ function gen(schema: JsonSchema): string {
   return jsonSchemaToZod(schema);
 }
 
-describe("jsonSchemaToZod — primitives", () => {
+describe("jsonSchemaToZod: primitives", () => {
   it("maps string/number/integer/boolean", () => {
     expect(gen({ type: "string" })).toBe("z.string()");
     expect(gen({ type: "number" })).toBe("z.number()");
@@ -41,7 +41,7 @@ describe("jsonSchemaToZod — primitives", () => {
   });
 });
 
-describe("jsonSchemaToZod — objects", () => {
+describe("jsonSchemaToZod: objects", () => {
   const userSchema: JsonSchema = {
     type: "object",
     properties: {
@@ -72,7 +72,7 @@ describe("jsonSchemaToZod — objects", () => {
   });
 });
 
-describe("jsonSchemaToZod — composition (OD-1)", () => {
+describe("jsonSchemaToZod: composition (OD-1)", () => {
   it("allOf deep-merges object members", () => {
     const schema = build(
       gen({
@@ -120,7 +120,7 @@ describe("jsonSchemaToZod — composition (OD-1)", () => {
   });
 });
 
-describe("jsonSchemaToZod — robustness", () => {
+describe("jsonSchemaToZod: robustness", () => {
   it("unknown/typeless schema → z.unknown()", () => {
     expect(gen({} as JsonSchema)).toBe("z.unknown()");
   });
@@ -134,7 +134,7 @@ describe("jsonSchemaToZod — robustness", () => {
     expect(() => build(src)).not.toThrow();
   });
 
-  it("is deterministic (byte-identical across runs) — OD-3", () => {
+  it("is deterministic (byte-identical across runs), OD-3", () => {
     const schema: JsonSchema = {
       type: "object",
       properties: {

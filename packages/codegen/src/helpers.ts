@@ -116,6 +116,11 @@ export function isReadOnly(tool: { method: string }): boolean {
   return method === "GET" || method === "HEAD";
 }
 
+/** High and critical tools ask the user before running, and are marked destructive. */
+export function isHighRisk(riskLevel: string): boolean {
+  return riskLevel === "high" || riskLevel === "critical";
+}
+
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE", "OPTIONS"]);
 
 /** The MCP behavior hints a client shows for a tool (a hint, not a guarantee). */
@@ -125,7 +130,7 @@ export function toolAnnotations(tool: { method: string; riskLevel: string }): Re
   const method = tool.method.toUpperCase();
   return {
     readOnlyHint: false,
-    destructiveHint: method === "DELETE" || tool.riskLevel === "high" || tool.riskLevel === "critical",
+    destructiveHint: method === "DELETE" || isHighRisk(tool.riskLevel),
     idempotentHint: IDEMPOTENT_METHODS.has(method),
     openWorldHint: true,
   };

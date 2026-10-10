@@ -41,7 +41,7 @@ case "${1:-}" in
       [ -n "${u// /}" ] && { echo "Demo URL: $u"; exit 0; }
       sleep 15
     done
-    echo "Tunnel not up yet — bootstrap may still be running (check: manage.sh bootlog)." ;;
+    echo "Tunnel not up yet; bootstrap may still be running (check: manage.sh bootlog)." ;;
   start)
     aws ec2 start-instances --instance-ids "$(iid)" >/dev/null
     aws ec2 wait instance-running --instance-ids "$(iid)"

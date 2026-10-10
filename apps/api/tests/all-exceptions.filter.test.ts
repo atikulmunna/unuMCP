@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
 
-// A leaked GitHub token shape — must never reach the client (NFR-001 / §17.2).
+// A leaked GitHub token shape must never reach the client (NFR-001 / §17.2).
 const TOKEN = "ghp_0123456789abcdefghijklmnopqrstuvwxyz";
 
 interface Captured {

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "unuMCP — OpenAPI to MCP servers",
+  title: "unuMCP: OpenAPI to MCP servers",
   description:
     "Turn an OpenAPI specification into a reviewed, tested, production-ready TypeScript MCP server.",
 };

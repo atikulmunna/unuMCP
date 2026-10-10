@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cx } from "@/lib/format";
 
-/** Wordmark: lowercase serif "unu", a small clay tile, then "mcp" in mono —
+/** Wordmark: lowercase serif "unu", a small clay tile, then "mcp" in mono;
  *  reads as a maker's mark, not a logo-generator output. */
 export function Brand({ className, href = "/projects" }: { className?: string; href?: string }) {
   return (

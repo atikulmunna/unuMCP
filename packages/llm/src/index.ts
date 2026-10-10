@@ -6,14 +6,8 @@ export { GeminiClient, GEMINI_DEFAULT_BASE_URL } from "./gemini-client";
 export type { GeminiClientOptions } from "./gemini-client";
 export { AnthropicClient, ANTHROPIC_DEFAULT_MODEL } from "./anthropic-client";
 export type { AnthropicClientOptions } from "./anthropic-client";
-export {
-  proposeToolDescription,
-  proposeToolDescriptions,
-  parseDescription,
-  parseBatchDescriptions,
-  parseBatchRisks,
-} from "./propose";
-export type { ToolProposalInput, ToolProposal, BatchToolProposal, ProposedRisk } from "./propose";
+export { proposeToolDescriptions, parseBatchDescriptions, parseBatchRisks } from "./propose";
+export type { ToolProposalInput, BatchToolProposal, ProposedRisk } from "./propose";
 export { repairCode, parseRepairFiles } from "./repair";
 export type { RepairInput, RepairResult, RepairFile } from "./repair";
 export { diffLines, unifiedDiff } from "./diff";

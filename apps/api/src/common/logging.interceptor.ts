@@ -18,8 +18,8 @@ interface Res {
 
 /**
  * Structured request logging (P6-7, §24 "Observability"). Emits one JSON line
- * per HTTP request on completion — `{ requestId, method, path, status, durationMs }`
- * — so logs are machine-parseable and each request carries a lightweight trace
+ * per HTTP request on completion (`{ requestId, method, path, status, durationMs }`),
+ * so logs are machine-parseable and each request carries a lightweight trace
  * id (the `requestId`). Kept dependency-free (no pino/OTel) per the MVP scope;
  * the JSON shape is drop-in for a real log shipper later.
  */

@@ -1,4 +1,4 @@
-export { classifyEndpoint, scoreRisk, maxRisk } from "./classify";
+export { classifyEndpoint, scoreRisk, maxRisk, isHighRisk } from "./classify";
 export { generateToolName, uniqueName, MAX_TOOL_NAME_LENGTH } from "./naming";
 export { proposeTools, assembleToolInput } from "./propose";
 export type { ToolInputOptions } from "./propose";

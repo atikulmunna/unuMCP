@@ -65,7 +65,7 @@ function runDocker(
   signal?: AbortSignal,
 ): Promise<PhaseResult> {
   return new Promise((resolve) => {
-    // Already cancelled before we even start — don't spawn.
+    // Already cancelled before we even start: don't spawn.
     if (signal?.aborted) {
       resolve({ ok: false, exitCode: null, log: "", timedOut: false });
       return;

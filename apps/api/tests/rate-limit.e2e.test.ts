@@ -80,7 +80,7 @@ describe("rate limiting (P6-5, §24)", () => {
   it("honours a tighter per-handler @RateLimit override", async () => {
     const server = app.getHttpServer();
     expect((await request(server).get("/strict")).status).toBe(200);
-    // limit:1 — the second hit is blocked even though /ping has its own bucket.
+    // limit:1, so the second hit is blocked even though /ping has its own bucket.
     expect((await request(server).get("/strict")).status).toBe(429);
   });
 
@@ -90,7 +90,7 @@ describe("rate limiting (P6-5, §24)", () => {
     // pass; assert /strict's exhaustion didn't leak into /ping's accounting by
     // confirming /ping is independently governed (its own window already used).
     const res = await request(server).get("/ping");
-    // /ping used its 2 in the first test (same long window), so it's blocked —
+    // /ping used its 2 in the first test (same long window), so it's blocked,
     // proving the bucket persisted independently of /strict.
     expect(res.status).toBe(429);
   });

@@ -68,7 +68,7 @@ describe("auth (P1-4)", () => {
     expect(bad.status).toBe(401);
   });
 
-  it("protects /auth/me — 401 without token, 200 with", async () => {
+  it("protects /auth/me: 401 without token, 200 with", async () => {
     const email = uniqueEmail("me");
     const reg = await request(app.getHttpServer()).post("/auth/register").send({ email, password: "password123" });
     const token = reg.body.accessToken;

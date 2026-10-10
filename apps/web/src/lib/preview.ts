@@ -1,5 +1,5 @@
 // Pure helpers for the code-preview / repair-diff panels (P4-9, §15.5).
-// Kept dependency-free and testable — the heavy parts (a full editor / token
+// Kept dependency-free and testable; the heavy parts (a full editor / token
 // highlighter) are intentionally out of scope for the MVP (no over-engineering).
 
 export type DiffTone = "add" | "del" | "meta" | "context";

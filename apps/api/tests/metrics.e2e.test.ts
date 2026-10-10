@@ -88,7 +88,7 @@ describe("observability metrics (P6-7, §25)", () => {
     });
   });
 
-  it("is scoped per user — a fresh user sees zeroes", async () => {
+  it("is scoped per user: a fresh user sees zeroes", async () => {
     const token = await makeUser("metrics-fresh");
     const res = await request(app.getHttpServer())
       .get("/metrics")

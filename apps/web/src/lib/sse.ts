@@ -1,6 +1,6 @@
 // Minimal Server-Sent Events frame parser (P4-8). We consume the test-log stream
-// with `fetch` (so the Bearer token can ride the Authorization header — native
-// EventSource can't send headers), which means parsing the wire format ourselves.
+// with `fetch` (so the Bearer token can ride the Authorization header;
+// native EventSource can't send headers), which means parsing the wire format ourselves.
 // Pure and incremental: feed it the running buffer, get back complete events plus
 // the unparsed remainder to carry into the next read.
 

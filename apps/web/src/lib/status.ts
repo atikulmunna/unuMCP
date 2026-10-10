@@ -1,7 +1,7 @@
 import type { ProjectStatus } from "./types";
 
 // The five user-facing stages of the build, in order. The backend's larger
-// ProjectStatus enum folds onto these — each status names the stage it concerns
+// ProjectStatus enum folds onto these: each status names the stage it concerns
 // and that stage's phase.
 export const STAGES = [
   { key: "spec", label: "Specification", hint: "Upload & validate the OpenAPI document" },
@@ -14,11 +14,11 @@ export const STAGES = [
 export type StageKey = (typeof STAGES)[number]["key"];
 
 // Where a stage sits relative to the user's attention.
-//  pending — not reached yet
-//  active  — waiting on the user to act
-//  busy    — the system is working
-//  done    — finished cleanly
-//  error   — finished in a failure state
+//  pending: not reached yet
+//  active:  waiting on the user to act
+//  busy:    the system is working
+//  done:    finished cleanly
+//  error:   finished in a failure state
 export type Phase = "pending" | "active" | "busy" | "done" | "error";
 
 interface StatusPlacement {

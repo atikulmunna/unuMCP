@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { dereferenceSpec, detectAuth, extractEndpoints, toCycleSafe } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
-import { maxRisk, proposeTools } from "@unumcp/analysis";
+import { isHighRisk, maxRisk, proposeTools } from "@unumcp/analysis";
 import type { ToolDraft } from "@unumcp/analysis";
 import { Prisma } from "@unumcp/db";
 import { detectPromptInjection } from "@unumcp/security-scan";
@@ -53,29 +53,18 @@ export class ToolsService {
       ? await this.describeBatched(projectId, drafts, endpoints)
       : { descriptions: drafts.map((d) => d.description), risks: drafts.map(() => null) };
 
-    // The model's risk rating is a second opinion that can only raise the rules'
-    // score (it reads the description too, e.g. a `force` flag a path can't
-    // show). A tool raised to high or critical starts disabled like any other.
-    const finals = drafts.map((d, i) => {
-      const riskLevel = maxRisk(d.riskLevel, risks[i] ?? d.riskLevel);
-      const enabled = d.enabledByDefault && riskLevel !== "high" && riskLevel !== "critical";
-      return { riskLevel, enabled, raised: riskLevel !== d.riskLevel };
-    });
-    const raised = drafts.flatMap((d, i) =>
-      finals[i]!.raised ? [{ tool: d.name, from: d.riskLevel, to: finals[i]!.riskLevel }] : [],
-    );
+    const proposed = drafts.map((d, i) => ({ ...d, description: descriptions[i] ?? d.description }));
+    await this.saveProposal(projectId, proposed, applyRiskOpinions(drafts, risks), flagInjections(drafts, endpoints));
+    return this.list(projectId);
+  }
 
-    // Flag (don't block) untrusted spec text that looks like a prompt-injection
-    // attempt (P6-2, §16.2 "flag suspicious descriptions"). The LLM is already
-    // told to ignore instructions in the data; this surfaces it in the audit trail.
-    const flagged = drafts.flatMap((d, i) => {
-      const ep = endpoints[i];
-      const result = detectPromptInjection(`${ep?.summary ?? ""}\n${ep?.description ?? ""}`);
-      return result.suspicious
-        ? [{ tool: d.name, categories: [...new Set(result.findings.map((f) => f.category))] }]
-        : [];
-    });
-
+  /** Replace the project's candidates with the proposal and audit what was raised or flagged. */
+  private async saveProposal(
+    projectId: string,
+    drafts: ToolDraft[],
+    { finals, raised }: ReturnType<typeof applyRiskOpinions>,
+    flagged: ReturnType<typeof flagInjections>,
+  ): Promise<void> {
     const dbEndpoints = await this.prisma.endpoint.findMany({ where: { projectId } });
     const endpointIdByKey = new Map(dbEndpoints.map((e) => [`${e.method} ${e.path}`, e.id]));
 
@@ -86,7 +75,7 @@ export class ToolsService {
           data: {
             projectId,
             name: d.name,
-            description: descriptions[i] ?? d.description,
+            description: d.description,
             inputSchema: toCycleSafe(d.inputSchema) as unknown as Prisma.InputJsonValue,
             enabled: finals[i]!.enabled,
             riskLevel: finals[i]!.riskLevel,
@@ -121,14 +110,12 @@ export class ToolsService {
             eventType: "prompt_injection_flagged",
             actor: "system",
             summary: `Flagged ${flagged.length} endpoint description(s) for possible prompt injection: ${flagged.map((f) => f.tool).join(", ")}`,
-            // Store the matched categories only — never the attacker's raw payload.
+            // Store the matched categories only, never the attacker's raw payload.
             metadata: { flagged } as unknown as Prisma.InputJsonValue,
           },
         });
       }
     });
-
-    return this.list(projectId);
   }
 
   /**
@@ -245,4 +232,37 @@ export class ToolsService {
 
     return { approvedCount: enabledCount };
   }
+}
+
+/**
+ * Combine each draft's rule-based risk with the model's opinion. The opinion
+ * is a second look that can only raise risk (it reads the description too, e.g.
+ * a `force` flag a path can't show); a tool raised to high or critical starts
+ * disabled like any other.
+ */
+function applyRiskOpinions(drafts: ToolDraft[], opinions: (ProposedRisk | null)[]) {
+  const finals = drafts.map((d, i) => {
+    const riskLevel = maxRisk(d.riskLevel, opinions[i] ?? d.riskLevel);
+    const enabled = d.enabledByDefault && !isHighRisk(riskLevel);
+    return { riskLevel, enabled };
+  });
+  const raised = drafts.flatMap((d, i) =>
+    finals[i]!.riskLevel !== d.riskLevel ? [{ tool: d.name, from: d.riskLevel, to: finals[i]!.riskLevel }] : [],
+  );
+  return { finals, raised };
+}
+
+/**
+ * Flag (don't block) untrusted spec text that looks like a prompt-injection
+ * attempt (P6-2, §16.2 "flag suspicious descriptions"). The LLM is already told
+ * to ignore instructions in the data; this surfaces it in the audit trail.
+ */
+function flagInjections(drafts: ToolDraft[], endpoints: (ExtractedEndpoint | undefined)[]) {
+  return drafts.flatMap((d, i) => {
+    const ep = endpoints[i];
+    const result = detectPromptInjection(`${ep?.summary ?? ""}\n${ep?.description ?? ""}`);
+    return result.suspicious
+      ? [{ tool: d.name, categories: [...new Set(result.findings.map((f) => f.category))] }]
+      : [];
+  });
 }

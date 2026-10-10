@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     step(4, "Propose tools (LIVE LLM)");
     const started = Date.now();
     const tools = await call("POST", `/projects/${id}/tools/propose`);
-    console.log(`    ✓ ${tools.length} tools proposed in ${Date.now() - started} ms — LLM descriptions:`);
+    console.log(`    ✓ ${tools.length} tools proposed in ${Date.now() - started} ms; LLM descriptions:`);
     for (const t of tools) {
       console.log(`      • ${t.name} [${t.riskLevel}]  ${t.description}`);
     }
@@ -118,7 +118,7 @@ async function main(): Promise<void> {
 
     step(6, "Generate the MCP server");
     const gen = await call("POST", `/projects/${id}/generation`);
-    console.log(`    ✓ run ${gen.runId ?? gen.jobId ?? "?"} — ${gen.fileCount ?? "?"} files`);
+    console.log(`    ✓ run ${gen.runId ?? gen.jobId ?? "?"}: ${gen.fileCount ?? "?"} files`);
 
     step(7, "Run the Docker sandbox (real; prebuilt image, first run builds it)");
     const t0 = Date.now();
@@ -143,7 +143,7 @@ async function main(): Promise<void> {
         headers: { authorization: `Bearer ${token}` },
       });
       const bytes = Buffer.from(await zipRes.arrayBuffer());
-      console.log(`    ✓ ${zipRes.headers.get("content-type")} — ${bytes.length} bytes, ${zipRes.headers.get("content-disposition")}`);
+      console.log(`    ✓ ${zipRes.headers.get("content-type")}, ${bytes.length} bytes, ${zipRes.headers.get("content-disposition")}`);
     } else {
       console.log(`    ! tests did not pass (status ${afterTest.status}); skipping complete/download.`);
     }

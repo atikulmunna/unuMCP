@@ -29,14 +29,14 @@ export interface ScanFinding {
 }
 
 export interface ScanResult {
-  /** False when any `high`-severity finding is present — the packaging gate. */
+  /** False when any `high`-severity finding is present (the packaging gate). */
   passed: boolean;
   findings: ScanFinding[];
 }
 
 export interface ScanOptions {
   /**
-   * Hosts the generated code is legitimately allowed to talk to — normally just
+   * Hosts the generated code is legitimately allowed to talk to: normally just
    * the configured API base URL host. Reserved example domains and loopback are
    * always allowed.
    */
@@ -78,7 +78,7 @@ interface PatternRule {
   message: string;
 }
 
-// Known credential shapes — high confidence, so high severity.
+// Known credential shapes: high confidence, so high severity.
 const SECRET_RULES: PatternRule[] = [
   {
     rule: "hardcoded-secret",
@@ -251,7 +251,7 @@ function clip(text: string, max = 120): string {
  */
 export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {}): ScanResult {
   const allowed = new Set((options.allowedHosts ?? []).map((h) => h.toLowerCase()));
-  const allowedSites = new Set([...allowed].map(siteOf));
+  const hosts: HostPolicy = { allowed, allowedSites: new Set([...allowed].map(siteOf)) };
   const allowedDeps = new Set(options.allowedDependencies ?? DEFAULT_DEPENDENCY_ALLOWLIST);
   const findings: ScanFinding[] = [];
 
@@ -259,100 +259,126 @@ export function scanGeneratedProject(files: ScanFile[], options: ScanOptions = {
     if (file.path === "package.json" || file.path.endsWith("/package.json")) {
       findings.push(...checkDependencies(file, allowedDeps));
     }
-
-    // Secrets are looked for everywhere (a key is a leak even inside a
-    // description). Behavioural rules run on what can execute: for code, the
-    // parser-backed view with comments and documentation strings blanked; for
-    // Markdown, nothing; for anything else (JSON, .env.example), the raw text.
-    // Agent-facing documentation strings get their own link rule below.
-    const lines = file.content.split("\n");
-    const views = viewsOf(file);
-    const behaviourLines = views.behaviour?.split("\n");
-    const docLines = views.docs?.split("\n");
-
-    lines.forEach((line, idx) => {
-      const lineNo = idx + 1;
-      const codeLine = behaviourLines?.[idx];
-
-      // Links in agent-facing text: the API's own site is documentation; a
-      // foreign host is worth a look (medium); telling the agent to send
-      // something to a foreign host is a tool-poisoning payload (high).
-      const docLine = docLines?.[idx];
-      if (docLine?.trim()) {
-        URL_PATTERN.lastIndex = 0;
-        let docUrl: RegExpExecArray | null;
-        while ((docUrl = URL_PATTERN.exec(docLine)) !== null) {
-          const host = hostOf(docUrl[1] ?? "");
-          if (isSafeHost(host, allowed) || allowedSites.has(siteOf(host))) continue;
-          const instructs = SEND_INSTRUCTION.test(docLine.slice(Math.max(0, docUrl.index - 160), docUrl.index));
-          findings.push({
-            rule: instructs ? "doc-send-instruction" : "outside-doc-link",
-            severity: instructs ? "high" : "medium",
-            path: file.path,
-            line: lineNo,
-            message: instructs
-              ? `Agent-facing text tells the agent to send data to "${host}" (possible tool poisoning).`
-              : `Agent-facing text links to "${host}", outside the API's own site; review it (MCP clients pass descriptions to the agent).`,
-            excerpt: clip(docUrl[0]),
-          });
-        }
-      }
-
-      const record = (rule: PatternRule, matched: string) => {
-        findings.push({
-          rule: rule.rule,
-          severity: rule.severity,
-          path: file.path,
-          line: lineNo,
-          message: rule.message,
-          excerpt: clip(matched),
-        });
-      };
-
-      for (const rule of SECRET_RULES) {
-        if (rule.pattern.test(line)) record(rule, line);
-      }
-      if (codeLine !== undefined) {
-        for (const rule of [...DANGEROUS_RULES, ...OBFUSCATION_RULES]) {
-          if (rule.pattern.test(codeLine)) record(rule, line);
-        }
-      }
-
-      const assign = SECRET_ASSIGNMENT.exec(line);
-      const assignedValue = assign?.[2];
-      if (assignedValue && !PLACEHOLDER_VALUE.test(assignedValue)) {
-        findings.push({
-          rule: "hardcoded-secret",
-          severity: "high",
-          path: file.path,
-          line: lineNo,
-          // Never echo the secret value itself.
-          message: "Credential assigned to a string literal.",
-          excerpt: clip(line.replace(assignedValue, "***")),
-        });
-      }
-
-      if (codeLine === undefined) return;
-      URL_PATTERN.lastIndex = 0;
-      let urlMatch: RegExpExecArray | null;
-      while ((urlMatch = URL_PATTERN.exec(codeLine)) !== null) {
-        const host = hostOf(urlMatch[1] ?? "");
-        if (!isSafeHost(host, allowed)) {
-          findings.push({
-            rule: "unexpected-host",
-            severity: "high",
-            path: file.path,
-            line: lineNo,
-            message: `References an unexpected host "${host}" (only the configured API host is allowed).`,
-            excerpt: clip(urlMatch[0]),
-          });
-        }
-      }
-    });
+    findings.push(...scanFile(file, hosts));
   }
 
   const passed = !findings.some((f) => f.severity === "high");
   return { passed, findings };
+}
+
+/** The hosts generated code may reach, and the sites whose docs it may link. */
+interface HostPolicy {
+  allowed: Set<string>;
+  allowedSites: Set<string>;
+}
+
+/** Where a finding sits. */
+interface Location {
+  path: string;
+  line: number;
+}
+
+/**
+ * Secrets are looked for everywhere (a key is a leak even inside a
+ * description). Behavioural rules run on what can execute: for code, the
+ * parser-backed view with comments and documentation strings blanked; for
+ * Markdown, nothing; for anything else (JSON, .env.example), the raw text.
+ * Agent-facing documentation strings get their own link rule.
+ */
+function scanFile(file: ScanFile, hosts: HostPolicy): ScanFinding[] {
+  const views = viewsOf(file);
+  const behaviourLines = views.behaviour?.split("\n");
+  const docLines = views.docs?.split("\n");
+
+  return file.content.split("\n").flatMap((line, idx) => {
+    const at: Location = { path: file.path, line: idx + 1 };
+    const codeLine = behaviourLines?.[idx];
+    return [
+      ...docLinkFindings(docLines?.[idx], at, hosts),
+      ...patternFindings(line, codeLine, at),
+      ...secretAssignmentFindings(line, at),
+      ...(codeLine === undefined ? [] : hostFindings(codeLine, at, hosts.allowed)),
+    ];
+  });
+}
+
+/**
+ * Links in agent-facing text: the API's own site is documentation; a foreign
+ * host is worth a look (medium); telling the agent to send something to a
+ * foreign host is a tool-poisoning payload (high).
+ */
+function docLinkFindings(docLine: string | undefined, at: Location, hosts: HostPolicy): ScanFinding[] {
+  if (!docLine?.trim()) return [];
+  const findings: ScanFinding[] = [];
+  URL_PATTERN.lastIndex = 0;
+  let docUrl: RegExpExecArray | null;
+  while ((docUrl = URL_PATTERN.exec(docLine)) !== null) {
+    const host = hostOf(docUrl[1] ?? "");
+    if (isSafeHost(host, hosts.allowed) || hosts.allowedSites.has(siteOf(host))) continue;
+    const instructs = SEND_INSTRUCTION.test(docLine.slice(Math.max(0, docUrl.index - 160), docUrl.index));
+    findings.push({
+      rule: instructs ? "doc-send-instruction" : "outside-doc-link",
+      severity: instructs ? "high" : "medium",
+      ...at,
+      message: instructs
+        ? `Agent-facing text tells the agent to send data to "${host}" (possible tool poisoning).`
+        : `Agent-facing text links to "${host}", outside the API's own site; review it (MCP clients pass descriptions to the agent).`,
+      excerpt: clip(docUrl[0]),
+    });
+  }
+  return findings;
+}
+
+/** Credential shapes on the raw line; dangerous and obfuscated code on its executable view. */
+function patternFindings(line: string, codeLine: string | undefined, at: Location): ScanFinding[] {
+  const rules = [
+    ...SECRET_RULES.filter((rule) => rule.pattern.test(line)),
+    ...(codeLine === undefined
+      ? []
+      : [...DANGEROUS_RULES, ...OBFUSCATION_RULES].filter((rule) => rule.pattern.test(codeLine))),
+  ];
+  return rules.map((rule) => ({
+    rule: rule.rule,
+    severity: rule.severity,
+    ...at,
+    message: rule.message,
+    excerpt: clip(line),
+  }));
+}
+
+/** A secret-named key assigned a literal that isn't an obvious placeholder. */
+function secretAssignmentFindings(line: string, at: Location): ScanFinding[] {
+  const assignedValue = SECRET_ASSIGNMENT.exec(line)?.[2];
+  if (!assignedValue || PLACEHOLDER_VALUE.test(assignedValue)) return [];
+  return [
+    {
+      rule: "hardcoded-secret",
+      severity: "high",
+      ...at,
+      // Never echo the secret value itself.
+      message: "Credential assigned to a string literal.",
+      excerpt: clip(line.replace(assignedValue, "***")),
+    },
+  ];
+}
+
+/** Hosts that executable code reaches, other than the API's own and reserved ones. */
+function hostFindings(codeLine: string, at: Location, allowed: Set<string>): ScanFinding[] {
+  const findings: ScanFinding[] = [];
+  URL_PATTERN.lastIndex = 0;
+  let urlMatch: RegExpExecArray | null;
+  while ((urlMatch = URL_PATTERN.exec(codeLine)) !== null) {
+    const host = hostOf(urlMatch[1] ?? "");
+    if (isSafeHost(host, allowed)) continue;
+    findings.push({
+      rule: "unexpected-host",
+      severity: "high",
+      ...at,
+      message: `References an unexpected host "${host}" (only the configured API host is allowed).`,
+      excerpt: clip(urlMatch[0]),
+    });
+  }
+  return findings;
 }
 
 const CODE_FILE = /\.[cm]?[jt]sx?$/i;

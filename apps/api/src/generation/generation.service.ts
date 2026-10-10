@@ -9,8 +9,8 @@ import { dereferenceSpec, detectAuth, extractEndpoints } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
 import { generateProject } from "@unumcp/codegen";
 import type { GeneratedFile, RiskLevel } from "@unumcp/codegen";
-import { summarizeScan, redactSecrets } from "@unumcp/security-scan";
-import { ArtifactType } from "@unumcp/db";
+import { summarizeScan, redactSecrets, type ScanFinding } from "@unumcp/security-scan";
+import { ArtifactType, type Prisma } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
@@ -22,6 +22,30 @@ import { computeWarnings, renderWarningsMarkdown, testOutcomeOf } from "../compl
 import { latestStoredCodeResult } from "../testing/test-results";
 
 const MCP_SDK_VERSION = "1.29.0";
+
+const TOOL_WITH_ENDPOINT = { endpoints: { include: { endpoint: true } } } as const;
+type ToolWithEndpoint = Prisma.ToolCandidateGetPayload<{ include: typeof TOOL_WITH_ENDPOINT }>;
+
+/** Pair each approved tool with the spec endpoint it was proposed from. */
+function toApprovedTools(
+  tools: ToolWithEndpoint[],
+  endpointsByKey: Map<string, ExtractedEndpoint>,
+): ApprovedTool[] {
+  return tools.map((t) => {
+    const link = t.endpoints[0]?.endpoint;
+    const endpoint = link ? endpointsByKey.get(`${link.method} ${link.path}`) : undefined;
+    if (!endpoint) {
+      throw new BadRequestException(`No endpoint mapping for tool "${t.name}".`);
+    }
+    return {
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema as object,
+      riskLevel: t.riskLevel as RiskLevel,
+      endpoint,
+    };
+  });
+}
 
 @Injectable()
 export class GenerationService {
@@ -39,33 +63,7 @@ export class GenerationService {
    */
   async generate(projectId: string, userId: string) {
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
-
-    // No-duplicate-artifacts guard (NFR-006): refuse a second concurrent run for
-    // the same project. Enforced at the domain layer so it holds whether invoked
-    // inline, by a queue worker, or by a retry — independent of the queue.
-    const active = await this.prisma.generationRun.findFirst({
-      where: { projectId, status: "running" },
-    });
-    if (active) {
-      throw new ConflictException("A generation run is already in progress for this project.");
-    }
-
-    const tools = await this.prisma.toolCandidate.findMany({
-      where: { projectId, approved: true },
-      include: { endpoints: { include: { endpoint: true } } },
-      orderBy: { createdAt: "asc" },
-    });
-    if (tools.length === 0) {
-      throw new BadRequestException("Approve at least one tool before generating.");
-    }
-
-    const spec = await this.prisma.apiSpec.findFirst({
-      where: { projectId, validationStatus: "valid" },
-      orderBy: { createdAt: "desc" },
-    });
-    if (!spec?.parsedJson) {
-      throw new BadRequestException("No validated spec found for this project.");
-    }
+    const { tools, spec } = await this.loadApprovedPlan(projectId);
 
     const deref = await dereferenceSpec(spec.parsedJson as object);
     const endpointsByKey = new Map<string, ExtractedEndpoint>(
@@ -83,21 +81,7 @@ export class GenerationService {
     });
 
     try {
-      const approved: ApprovedTool[] = tools.map((t) => {
-        const link = t.endpoints[0]?.endpoint;
-        const endpoint = link ? endpointsByKey.get(`${link.method} ${link.path}`) : undefined;
-        if (!endpoint) {
-          throw new BadRequestException(`No endpoint mapping for tool "${t.name}".`);
-        }
-        return {
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema as object,
-          riskLevel: t.riskLevel as RiskLevel,
-          endpoint,
-        };
-      });
-
+      const approved = toApprovedTools(tools, endpointsByKey);
       const baseUrl = spec.baseUrl ?? DEFAULT_BASE_URL;
       const files = generateProject(
         buildGenerateOptions({
@@ -108,93 +92,148 @@ export class GenerationService {
           tools: approved,
         }),
       );
-
-      // Static security gate before anything is persisted or packaged (P6-3,
-      // §16.3). Although generation is deterministic, the base URL and tool
-      // names/descriptions come from an untrusted spec — refuse to ship code
-      // that smells of injected secrets, exfiltration hosts, or eval/shell.
-      const scan = scanForPackaging(files, baseUrl);
-      const scanNotes = scan.findings.filter((f) => f.severity !== "high");
-      if (!scan.passed) {
-        const high = scan.findings.filter((f) => f.severity === "high");
-        await this.prisma.auditEvent.create({
-          data: {
-            projectId,
-            userId,
-            eventType: "security_scan_failed",
-            actor: "agent",
-            summary: `Generated code failed the security scan: ${summarizeScan(scan)}`,
-            metadata: JSON.parse(JSON.stringify({ findings: high.slice(0, 20) })),
-          },
-        });
-        const detail = high
-          .slice(0, 5)
-          .map((f) => `${f.path}:${f.line} ${f.rule} — ${f.message}`)
-          .join("; ");
-        throw new BadRequestException(
-          `Generated code failed the security scan (${high.length} high-severity finding(s)): ${detail}`,
-        );
-      }
-
+      const scanNotes = await this.enforceSecurityGate(projectId, userId, files, baseUrl);
       await this.persistArtifacts(projectId, run.id, files);
-
-      // Attribute the LLM cost of proposing this project's tools to the run
-      // (NFR-007b, P6-7). Tokens come from the FR-031 `llm_tool_call` traces
-      // recorded during `tools/propose`; repair passes add to these later.
-      const proposal = await this.sumProposalUsage(projectId, run.startedAt);
-      const model = this.llm.model;
-
-      await this.prisma.$transaction([
-        this.prisma.generationRun.update({
-          where: { id: run.id },
-          data: {
-            status: "passed",
-            completedAt: new Date(),
-            inputTokens: proposal.inputTokens,
-            outputTokens: proposal.outputTokens,
-            estimatedCostUsd: estimateCostUsd(model, proposal.inputTokens, proposal.outputTokens),
-            llmModelId: proposal.inputTokens > 0 ? model : null,
-          },
-        }),
-        // Code (and its tests) are generated; the next stage is the test/sandbox phase.
-        this.prisma.project.update({
-          where: { id: projectId },
-          data: { status: "TEST_GENERATING" },
-        }),
-        this.prisma.auditEvent.create({
-          data: {
-            projectId,
-            userId,
-            eventType: "code_generated",
-            actor: "agent",
-            // Non-blocking scan notes (e.g. agent-facing links to other sites)
-            // ride along for review instead of being dropped.
-            summary:
-              `Generated ${files.length} file(s) for ${approved.length} tool(s)` +
-              (scanNotes.length > 0 ? `; ${scanNotes.length} security scan note(s) to review` : ""),
-            ...(scanNotes.length > 0
-              ? { metadata: JSON.parse(JSON.stringify({ scanNotes: scanNotes.slice(0, 50) })) }
-              : {}),
-          },
-        }),
-      ]);
-
+      await this.completeRun(projectId, userId, run, files.length, approved.length, scanNotes);
       return { runId: run.id, status: "passed", fileCount: files.length };
     } catch (err) {
-      await this.prisma.generationRun.update({
-        where: { id: run.id },
-        data: {
-          status: "failed",
-          completedAt: new Date(),
-          errorMessage: redactSecrets(err instanceof Error ? err.message : String(err)),
-        },
-      });
-      await this.prisma.project.update({
-        where: { id: projectId },
-        data: { status: "GENERATION_FAILED" },
-      });
+      await this.failRun(projectId, run.id, err);
       throw err;
     }
+  }
+
+  /** The approved tools and the latest valid spec; refuses a run that can't or mustn't start. */
+  private async loadApprovedPlan(projectId: string) {
+    // No-duplicate-artifacts guard (NFR-006): refuse a second concurrent run for
+    // the same project. Enforced at the domain layer so it holds whether invoked
+    // inline, by a queue worker, or by a retry, independent of the queue.
+    const active = await this.prisma.generationRun.findFirst({
+      where: { projectId, status: "running" },
+    });
+    if (active) {
+      throw new ConflictException("A generation run is already in progress for this project.");
+    }
+
+    const tools = await this.prisma.toolCandidate.findMany({
+      where: { projectId, approved: true },
+      include: TOOL_WITH_ENDPOINT,
+      orderBy: { createdAt: "asc" },
+    });
+    if (tools.length === 0) {
+      throw new BadRequestException("Approve at least one tool before generating.");
+    }
+
+    const spec = await this.prisma.apiSpec.findFirst({
+      where: { projectId, validationStatus: "valid" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!spec?.parsedJson) {
+      throw new BadRequestException("No validated spec found for this project.");
+    }
+    return { tools, spec };
+  }
+
+  /**
+   * Static security gate before anything is persisted or packaged (P6-3,
+   * §16.3). Although generation is deterministic, the base URL and tool
+   * names/descriptions come from an untrusted spec, so code that smells of
+   * injected secrets, exfiltration hosts, or eval/shell is refused (and
+   * audited). Returns the non-blocking findings, which are kept for review.
+   */
+  private async enforceSecurityGate(
+    projectId: string,
+    userId: string,
+    files: GeneratedFile[],
+    baseUrl: string,
+  ): Promise<ScanFinding[]> {
+    const scan = scanForPackaging(files, baseUrl);
+    if (scan.passed) return scan.findings.filter((f) => f.severity !== "high");
+
+    const high = scan.findings.filter((f) => f.severity === "high");
+    await this.prisma.auditEvent.create({
+      data: {
+        projectId,
+        userId,
+        eventType: "security_scan_failed",
+        actor: "agent",
+        summary: `Generated code failed the security scan: ${summarizeScan(scan)}`,
+        metadata: JSON.parse(JSON.stringify({ findings: high.slice(0, 20) })),
+      },
+    });
+    const detail = high
+      .slice(0, 5)
+      .map((f) => `${f.path}:${f.line} ${f.rule}: ${f.message}`)
+      .join("; ");
+    throw new BadRequestException(
+      `Generated code failed the security scan (${high.length} high-severity finding(s)): ${detail}`,
+    );
+  }
+
+  /** Mark the run passed with its LLM cost, and hand the project to the test stage. */
+  private async completeRun(
+    projectId: string,
+    userId: string,
+    run: { id: string; startedAt: Date },
+    fileCount: number,
+    toolCount: number,
+    scanNotes: ScanFinding[],
+  ): Promise<void> {
+    // Attribute the LLM cost of proposing this project's tools to the run
+    // (NFR-007b, P6-7). Tokens come from the FR-031 `llm_tool_call` traces
+    // recorded during `tools/propose`; repair passes add to these later.
+    const proposal = await this.sumProposalUsage(projectId, run.startedAt);
+    const model = this.llm.model;
+
+    await this.prisma.$transaction([
+      this.prisma.generationRun.update({
+        where: { id: run.id },
+        data: {
+          status: "passed",
+          completedAt: new Date(),
+          inputTokens: proposal.inputTokens,
+          outputTokens: proposal.outputTokens,
+          estimatedCostUsd: estimateCostUsd(model, proposal.inputTokens, proposal.outputTokens),
+          llmModelId: proposal.inputTokens > 0 ? model : null,
+        },
+      }),
+      // Code (and its tests) are generated; the next stage is the test/sandbox phase.
+      this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: "TEST_GENERATING" },
+      }),
+      this.prisma.auditEvent.create({
+        data: {
+          projectId,
+          userId,
+          eventType: "code_generated",
+          actor: "agent",
+          // Non-blocking scan notes (e.g. agent-facing links to other sites)
+          // ride along for review instead of being dropped.
+          summary:
+            `Generated ${fileCount} file(s) for ${toolCount} tool(s)` +
+            (scanNotes.length > 0 ? `; ${scanNotes.length} security scan note(s) to review` : ""),
+          ...(scanNotes.length > 0
+            ? { metadata: JSON.parse(JSON.stringify({ scanNotes: scanNotes.slice(0, 50) })) }
+            : {}),
+        },
+      }),
+    ]);
+  }
+
+  /** Record a failed run (with a redacted reason) and the project's failure state. */
+  private async failRun(projectId: string, runId: string, err: unknown): Promise<void> {
+    await this.prisma.generationRun.update({
+      where: { id: runId },
+      data: {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: redactSecrets(err instanceof Error ? err.message : String(err)),
+      },
+    });
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: { status: "GENERATION_FAILED" },
+    });
   }
 
   /** Latest generation run with its artifacts (§14.5). */
@@ -257,8 +296,8 @@ export class GenerationService {
   /**
    * Package the latest generated artifacts into a downloadable ZIP (P5-2/3,
    * FR-027). Reads each stored file and zips it deterministically. The archive
-   * carries only generated sources (incl. `.env.example` with placeholders) —
-   * never a populated `.env` — so no secrets leave the platform.
+   * carries only generated sources (incl. `.env.example` with placeholders),
+   * never a populated `.env`, so no secrets leave the platform.
    */
   async downloadZip(projectId: string): Promise<{ filename: string; buffer: Buffer }> {
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });

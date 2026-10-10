@@ -25,7 +25,7 @@ export class GenerationController {
 
   @Post()
   @HttpCode(200)
-  // Generation is CPU/codegen-heavy (and LLM-bound later) — cap it (§24, NFR-007b).
+  // Generation is CPU/codegen-heavy (and LLM-bound later), so cap it (§24, NFR-007b).
   @RateLimit({ limit: 10, windowMs: 60_000 })
   // Runs inline (returns the result) or enqueues (returns a queued handle) per P6-6.
   generate(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {

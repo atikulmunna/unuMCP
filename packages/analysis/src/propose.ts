@@ -1,6 +1,6 @@
 import type { ExtractedEndpoint, JsonSchema, ParameterInfo } from "@unumcp/openapi";
 import type { OperationType, ToolDraft } from "./types";
-import { classifyEndpoint, scoreRisk } from "./classify";
+import { classifyEndpoint, isHighRisk, scoreRisk } from "./classify";
 import { generateToolName, uniqueName } from "./naming";
 
 const MUTATING: OperationType[] = ["create", "update", "delete", "upload"];
@@ -81,7 +81,7 @@ export function proposeTools(endpoints: ExtractedEndpoint[], options: ToolInputO
       path: e.path,
       operationId: e.operationId,
       enabledByDefault:
-        riskLevel !== "high" && riskLevel !== "critical" && !e.deprecated && !e.unsupportedRequestBody,
+        !isHighRisk(riskLevel) && !e.deprecated && !e.unsupportedRequestBody,
     };
   });
 }

@@ -210,7 +210,7 @@ export const api = {
           for (const event of parsed.events) onEvent(event);
         }
       } catch {
-        // Aborted (cancel/unmount) or network drop — nothing to surface.
+        // Aborted (cancel/unmount) or network drop: nothing to surface.
       }
     },
   },

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 
-// Integration test — requires the dev Postgres (docker compose up postgres).
+// Integration test: requires the dev Postgres (docker compose up postgres).
 const prisma = new PrismaClient();
 const createdUserIds: string[] = [];
 

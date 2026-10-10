@@ -10,8 +10,8 @@ inline job queue, Gemini free-tier LLM, Cloudflare quick tunnel) rides along.
 | Resource | Detail |
 | --- | --- |
 | EC2 instance | `t4g.small` (ARM, 2 vCPU, 2 GB) + 4 GB swap, 20 GB gp3, Amazon Linux 2023 |
-| Security group | `unumcp-sg` — **no inbound rules** (access is via SSM + the tunnel, both outbound) |
-| IAM role | `unumcp-ssm-role` — `AmazonSSMManagedInstanceCore` (Session Manager; no SSH keys) |
+| Security group | `unumcp-sg`: **no inbound rules** (access is via SSM + the tunnel, both outbound) |
+| IAM role | `unumcp-ssm-role`: `AmazonSSMManagedInstanceCore` (Session Manager; no SSH keys) |
 | Runtime | Postgres 16 container + API + Web + `cloudflared` quick tunnel, all as systemd services |
 
 Access is a free `https://<random>.trycloudflare.com` URL (no Cloudflare account needed).
@@ -40,7 +40,7 @@ bash deploy/manage.sh url       # print the demo URL once the tunnel is up
 ## 2. Day-to-day (on-demand)
 
 ```bash
-bash deploy/manage.sh stop      # after a demo — billing drops to ~disk only (~$0.02/day)
+bash deploy/manage.sh stop      # after a demo; billing drops to ~disk only (~$0.02/day)
 bash deploy/manage.sh start     # ~30s later, prints the fresh URL
 bash deploy/manage.sh status    # state + public IP
 bash deploy/manage.sh ssh       # SSM shell on the box (no keys, no open ports)
@@ -68,8 +68,8 @@ bash deploy/manage.sh teardown  # terminates the instance, deletes the SG + IAM 
 
 ## Cost (on-demand)
 
-- Running: **~$0.017/hr** — an hour-long demo is under 2 cents.
-- Stopped (ready to start in ~30s): **~$1.60/mo** — the 20 GB gp3 volume only.
+- Running: **~$0.017/hr**, so an hour-long demo is under 2 cents.
+- Stopped (ready to start in ~30s): **~$1.60/mo** (the 20 GB gp3 volume only).
 - For **near-zero** cost between demo seasons: `teardown` (deletes the volume) and re-run
   `provision.sh` when you need it again (one command, ~10 min). Nothing bills while torn down.
 

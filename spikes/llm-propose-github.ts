@@ -1,7 +1,7 @@
 /**
  * Phase 0 / P0-4 spike (resumed): propose + name ONE tool for the GitHub
- * `issues/create` endpoint using a real LLM call — now via NVIDIA NIM instead of
- * Anthropic (decision: use the NIM key we already have; stack note in tasks.md).
+ * `issues/create` endpoint using a real LLM call via NVIDIA NIM (the key that
+ * was available at the time), through the same batch call the platform uses.
  *
  * Naming + classification + risk stay DETERMINISTIC (`@unumcp/analysis`); only
  * the human-facing description is model-authored (`@unumcp/llm`, FR-013). Records
@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dereferenceSpec, extractEndpoints } from "@unumcp/openapi";
 import { classifyEndpoint, generateToolName, scoreRisk } from "@unumcp/analysis";
-import { NimClient, proposeToolDescription } from "@unumcp/llm";
+import { NimClient, proposeToolDescriptions } from "@unumcp/llm";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   if (!apiKey) {
     console.log(
       [
-        "NVIDIA_API_KEY is not set — skipping the live call.",
+        "NVIDIA_API_KEY is not set; skipping the live call.",
         "",
         "To run the real spike (PowerShell):",
         '  $env:NVIDIA_API_KEY="nvapi-..."; pnpm tsx spikes/llm-propose-github.ts',
@@ -54,19 +54,22 @@ async function main(): Promise<void> {
   console.log(`Endpoint:    ${ep.method.toUpperCase()} ${ep.path}`);
   console.log(`Tool name:   ${toolName}   (operation=${operationType}, risk=${riskLevel})`);
 
-  const proposal = await proposeToolDescription(new NimClient({ apiKey, model }), {
-    toolName,
-    method: ep.method,
-    path: ep.path,
-    summary: ep.summary,
-    specDescription: ep.description,
-    paramNames,
-    mutates: ep.method.toLowerCase() !== "get",
-    riskLevel,
-  });
+  const proposal = await proposeToolDescriptions(new NimClient({ apiKey, model }), [
+    {
+      toolName,
+      method: ep.method,
+      path: ep.path,
+      summary: ep.summary,
+      specDescription: ep.description,
+      paramNames,
+      mutates: ep.method.toLowerCase() !== "get",
+      riskLevel,
+    },
+  ]);
 
-  console.log(`\nDescription: ${proposal.description}\n`);
-  console.log("— Measurements (OD-5 / P0-7) —");
+  console.log(`\nDescription:  ${proposal.descriptions[0] ?? "(none; the platform would use its draft)"}`);
+  console.log(`Model's risk: ${proposal.risks[0] ?? "(none)"}\n`);
+  console.log("Measurements (OD-5 / P0-7):");
   console.log(`  model returned:  ${proposal.model}`);
   console.log(`  input tokens:    ${proposal.usage.inputTokens}`);
   console.log(`  output tokens:   ${proposal.usage.outputTokens}`);

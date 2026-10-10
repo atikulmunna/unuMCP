@@ -1,4 +1,4 @@
-import { exampleForSchema } from "./helpers";
+import { exampleForSchema, isHighRisk } from "./helpers";
 import type { AuthConfig, McpToolDefinition } from "./types";
 
 /** The API key the generated tests configure; auth expectations are derived from it. */
@@ -9,7 +9,7 @@ export const DEFAULT_CONFIRM_RISK = "high";
 
 /** Whether a tool asks the user before running under the default policy. */
 export function confirmsByDefault(tool: Pick<McpToolDefinition, "riskLevel">): boolean {
-  return tool.riskLevel === "high" || tool.riskLevel === "critical";
+  return isHighRisk(tool.riskLevel);
 }
 
 const FORM_TYPE = "application/x-www-form-urlencoded";

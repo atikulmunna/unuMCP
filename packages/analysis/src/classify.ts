@@ -48,6 +48,11 @@ export function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
   return RISK_RANK[a] >= RISK_RANK[b] ? a : b;
 }
 
+/** High and critical tools start disabled; a person has to opt in to each. */
+export function isHighRisk(risk: RiskLevel): boolean {
+  return RISK_RANK[risk] >= RISK_RANK.high;
+}
+
 /** Rule-based risk scoring (FR-010, NFR-003). */
 export function scoreRisk(e: ExtractedEndpoint, operationType: OperationType): RiskLevel {
   const hay = haystack(e);

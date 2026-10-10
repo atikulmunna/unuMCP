@@ -1,6 +1,6 @@
 /**
  * Deterministic completion-warning rules (§26.4, P5-4). Pure so the same
- * pipeline facts always yield the same warnings — used both when finalizing a
+ * pipeline facts always yield the same warnings. Used both when finalizing a
  * project and when embedding `WARNINGS.md` into a download.
  */
 

@@ -312,7 +312,7 @@ describe("artifact preview + repair history (P4-9, §15.5)", () => {
 
     const a = await request(app.getHttpServer()).get(`/projects/${projectA}/generation`).set(auth);
     const artifactOfA = a.body.artifacts[0].id;
-    // Same owner, but request A's artifact via B's path — must 404 (scoped by projectId).
+    // Same owner, but request A's artifact via B's path must 404 (scoped by projectId).
     const res = await request(app.getHttpServer())
       .get(`/projects/${projectB}/generation/artifacts/${artifactOfA}`)
       .set(auth);

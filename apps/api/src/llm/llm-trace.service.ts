@@ -3,7 +3,7 @@ import { Prisma } from "@unumcp/db";
 import { redactSecrets } from "@unumcp/security-scan";
 import { PrismaService } from "../prisma/prisma.service";
 
-/** Project context for a trace — the internal agent tool call belongs to a project. */
+/** Project context for a trace: the internal agent tool call belongs to a project. */
 export interface LlmTraceContext {
   projectId: string;
 }
@@ -11,7 +11,7 @@ export interface LlmTraceContext {
 /** One internal agent tool-call trace (FR-031). Free-text is redacted on write. */
 export interface LlmTraceEntry {
   projectId: string;
-  /** The internal operation, e.g. `propose_tool_description` | `repair_code`. */
+  /** The internal operation, e.g. `propose_tool_descriptions_batch` | `repair_code`. */
   toolName: string;
   inputSummary: string;
   outputSummary?: string;
@@ -26,8 +26,8 @@ const SUMMARY_CAP = 300;
 const FIELD_CAP = 1_000;
 
 /**
- * Persists a trace of the platform's own internal agent tool calls — the LLM
- * stages (`propose_tool_description`, `repair_code`) — as `llm_tool_call`
+ * Persists a trace of the platform's own internal agent tool calls (the LLM
+ * stages `propose_tool_descriptions_batch` and `repair_code`) as `llm_tool_call`
  * `AuditEvent`s (FR-031, §9.10). Each trace records the tool name, an input and
  * output summary, a timestamp (the row's `createdAt`), and any error, with all
  * free-text run through `redactSecrets` (NFR-001) so a token echoed in a summary

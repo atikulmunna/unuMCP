@@ -170,7 +170,7 @@ describe("buildGenerateOptions", () => {
     const a = generateProject(opts);
     const b = generateProject(opts);
     expect(a).toEqual(b);
-    // Same files, same content — a strong reproducibility signal (§9.7.0).
+    // Same files, same content: a strong reproducibility signal (§9.7.0).
     expect(a.map((f) => f.path)).toEqual(b.map((f) => f.path));
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });

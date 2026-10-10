@@ -7,13 +7,11 @@ import { TopBar } from "@/components/TopBar";
 import { Pipeline } from "@/components/Pipeline";
 import { Badge, Notice, Panel, Spinner } from "@/components/ui";
 import { AuditTrail } from "@/components/project/AuditTrail";
-import {
-  CompleteCard,
-  GenerateCard,
-  SpecCard,
-  TestCard,
-  ToolsCard,
-} from "@/components/project/stages";
+import { CompleteCard } from "@/components/project/CompleteCard";
+import { GenerateCard } from "@/components/project/GenerateCard";
+import { SpecCard } from "@/components/project/SpecCard";
+import { TestCard } from "@/components/project/TestCard";
+import { ToolsCard } from "@/components/project/ToolsCard";
 import { useSession } from "@/lib/session";
 import { api, ApiError } from "@/lib/api";
 import { currentStage, statusMeta } from "@/lib/status";
@@ -56,7 +54,7 @@ export default function ProjectDetailPage() {
         api.projects.audit(id),
       ]);
       // List endpoints can 200 with an empty body (e.g. no runs yet), which the
-      // client resolves to undefined — coerce those back to empty arrays.
+      // client resolves to undefined, so coerce those back to empty arrays.
       setBundle({
         project,
         spec: spec ?? null,

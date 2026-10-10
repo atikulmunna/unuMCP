@@ -1,5 +1,5 @@
 /**
- * In-memory fixed-window rate-limit counter (P6-5, §24). One process, one map —
+ * In-memory fixed-window rate-limit counter (P6-5, §24). One process, one map:
  * adequate for the single-instance MVP; swap for a shared store (Redis) when the
  * API is horizontally scaled. Pure and clock-injectable so it is unit-testable.
  */

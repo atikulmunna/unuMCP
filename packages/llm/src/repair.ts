@@ -44,7 +44,7 @@ function isTestPath(path: string): boolean {
 
 /**
  * One LLM repair pass (P4-5, FR-026, §11.4): read failure → fix implementation →
- * (caller reruns). Tests stay frozen — the prompt forbids editing them and the
+ * (caller reruns). Tests stay frozen: the prompt forbids editing them and the
  * parser rejects any test path or any path not in the provided set, so a model
  * can't "fix" the test to make it pass or write outside the given files.
  */

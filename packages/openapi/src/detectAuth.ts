@@ -26,7 +26,7 @@ export interface DetectedAuthScheme {
 
 /** Result of inspecting a spec's auth (FR-016, FR-017). */
 export interface DetectedAuth {
-  /** Whether auth appears required — either declared, or assumed via the F-1 fallback. */
+  /** Whether auth appears required: either declared, or assumed via the F-1 fallback. */
   required: boolean;
   /** True when no machine-readable scheme existed and we assumed auth is required (F-1). */
   assumed: boolean;
@@ -40,7 +40,7 @@ export interface DetectedAuth {
  * Detect authentication from an OpenAPI document.
  *
  * When `components.securitySchemes` is absent or empty we cannot auto-configure
- * auth (the GitHub spec encodes it in a vendor extension — finding F-1). In that
+ * auth (the GitHub spec encodes it in a vendor extension, finding F-1). In that
  * case we default to *assume required + prompt the user* rather than silently
  * emitting an unauthenticated client.
  */

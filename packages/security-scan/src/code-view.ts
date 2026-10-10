@@ -1,12 +1,22 @@
 import ts from "typescript";
 
+export interface SourceViews {
+  /** What can execute: comments and documentation strings blanked. */
+  code: string;
+  /** Only the documentation strings (agent-facing text); everything else blanked. */
+  docs: string;
+}
+
 /**
- * The executable view of a TS/JS source: its comments and documentation
- * strings blanked out with spaces (newlines kept, so every offset, line, and
- * column still matches the original). Behavioural rules (exfiltration hosts,
- * eval/shell, obfuscation) run on this view, so a docs link inside a schema
- * description no longer reads as a network call, while code is scanned as
- * before.
+ * Two views of a TS/JS source, blanked with spaces (newlines kept, so every
+ * offset, line, and column still matches the original).
+ *
+ * `code` blanks comments and documentation strings. Behavioural rules
+ * (exfiltration hosts, eval/shell, obfuscation) run on it, so a docs link
+ * inside a schema description doesn't read as a network call. `docs` keeps only
+ * the documentation strings: the text an MCP client hands to the agent (tool and
+ * field descriptions), which matters on its own because it can carry
+ * instructions aimed at the agent.
  *
  * A documentation string is a plain string literal that is
  *   - an argument of `.describe(...)` (Zod schema docs),
@@ -16,23 +26,6 @@ import ts from "typescript";
  *
  * Returns `null` when the file does not parse cleanly: callers then scan the
  * raw text, so malformed input is never scanned less strictly.
- */
-export function codeView(path: string, content: string): string | null {
-  return sourceViews(path, content)?.code ?? null;
-}
-
-export interface SourceViews {
-  /** What can execute: comments and documentation strings blanked. */
-  code: string;
-  /** Only the documentation strings (agent-facing text); everything else blanked. */
-  docs: string;
-}
-
-/**
- * Both views of a TS/JS source, offset-for-offset with the original (see
- * {@link codeView}). `docs` holds the text an MCP client hands to the agent
- * (tool and field descriptions), which matters on its own: it can carry
- * instructions aimed at the agent. Returns `null` when the file doesn't parse.
  */
 export function sourceViews(path: string, content: string): SourceViews | null {
   const kind = /\.[cm]?jsx?$/i.test(path) ? ts.ScriptKind.JS : ts.ScriptKind.TS;

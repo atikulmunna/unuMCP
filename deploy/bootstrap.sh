@@ -11,7 +11,7 @@ REPO="${UNUMCP_REPO:-https://github.com/atikulmunna/unuMCP.git}"
 APP=/opt/unumcp
 DB_URL="postgresql://unumcp:${DB_PASSWORD}@localhost:5432/unumcp?schema=public"
 
-# 1. Swap — protects `pnpm install` / `next build` on a 2 GB box.
+# 1. Swap: protects `pnpm install` / `next build` on a 2 GB box.
 if [ ! -f /swapfile ]; then
   dd if=/dev/zero of=/swapfile bs=1M count=4096
   chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
@@ -57,7 +57,7 @@ until docker exec unumcp-pg pg_isready -U unumcp; do sleep 2; done
 # Pre-build the sandbox image (dependencies baked in) so the first test run is fast.
 pnpm --filter @unumcp/sandbox build-image
 
-# 8. systemd units: API, Web, and the tunnel — all auto-start on every boot.
+# 8. systemd units: API, Web, and the tunnel, all auto-starting on every boot.
 cat > /etc/systemd/system/unumcp-api.service <<EOF
 [Unit]
 Description=unuMCP API

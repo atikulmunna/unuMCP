@@ -29,7 +29,7 @@ export interface QueuedHandle {
  *
  * The worker resolves the domain services lazily via `ModuleRef` (not
  * constructor injection) so this module has no static dependency on the
- * Generation/Testing modules — avoiding a DI cycle (controllers there depend on
+ * Generation/Testing modules, avoiding a DI cycle (controllers there depend on
  * this service). Idempotency / no-duplicate-artifacts is enforced at the domain
  * layer (`GenerationService` refuses a second concurrent run), so retries and
  * re-enqueues are safe.
@@ -73,7 +73,14 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     await this.worker?.close();
     await this.queue?.close();
-    await Promise.all(this.connections.map((c) => c.quit().catch(() => undefined)));
+    // Shutdown continues past a failed disconnect, but the failure is reported.
+    await Promise.all(
+      this.connections.map((c) =>
+        c.quit().catch((err: unknown) =>
+          this.logger.warn(`Redis connection did not close cleanly: ${err instanceof Error ? err.message : err}`),
+        ),
+      ),
+    );
   }
 
   enqueueGeneration(projectId: string, userId: string): Promise<unknown> {

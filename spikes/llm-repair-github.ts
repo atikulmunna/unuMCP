@@ -38,7 +38,7 @@ function runTests(): { ok: boolean; output: string } {
 async function main(): Promise<void> {
   const apiKey = process.env.NVIDIA_API_KEY ?? process.env.NIM_API_KEY;
   if (!apiKey) {
-    console.log("NVIDIA_API_KEY not set — skipping. Run: node --env-file=apps/api/.env --import tsx spikes/llm-repair-github.ts");
+    console.log("NVIDIA_API_KEY not set; skipping. Run: node --env-file=apps/api/.env --import tsx spikes/llm-repair-github.ts");
     return;
   }
   if (!existsSync(join(projectDir, "node_modules"))) {
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   try {
     // 1. Plant a realistic defect: invert the non-2xx guard.
     const broken = original.replace("if (!response.ok)", "if (response.ok)");
-    if (broken === original) throw new Error("Could not plant the bug — guard text not found.");
+    if (broken === original) throw new Error("Could not plant the bug: guard text not found.");
     writeFileSync(absPath, broken);
 
     // 2. Capture the real failure.
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     console.log(`Model:        ${model}`);
     console.log(`Bug planted:  inverted the non-2xx guard in ${relPath}`);
     console.log(`Tests after bug: ${failed.ok ? "PASS (unexpected!)" : "FAIL (as expected)"}`);
-    if (failed.ok) throw new Error("Planted bug did not fail the tests — aborting.");
+    if (failed.ok) throw new Error("Planted bug did not fail the tests; aborting.");
 
     // 3. Ask the code model to repair implementation only.
     const result = await repairCode(new NimClient({ apiKey, model, timeoutMs: 90_000 }), {
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
 
     console.log(`\nRepair applied. Tests after fix: ${repaired.ok ? "PASS ✅" : "STILL FAILING ❌"}`);
     console.log(`Restored the guard correctly: ${fix.content.includes("if (!response.ok)")}`);
-    console.log("\n— Measurements (P4-5 / NFR-007b) —");
+    console.log("\nMeasurements (P4-5 / NFR-007b):");
     console.log(`  model returned: ${result.model}`);
     console.log(`  input tokens:   ${result.usage.inputTokens}`);
     console.log(`  output tokens:  ${result.usage.outputTokens}`);

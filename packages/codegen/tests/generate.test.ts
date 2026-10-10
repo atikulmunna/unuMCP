@@ -42,7 +42,7 @@ function fileMap(opts: GenerateOptions): Map<string, string> {
   return new Map(generateProject(opts).map((f) => [f.path, f.content]));
 }
 
-describe("generateProject — untrusted text is escaped, not injected (P6-9, §18.4)", () => {
+describe("generateProject: untrusted text is escaped, not injected (P6-9, §18.4)", () => {
   // A description carrying a code-breakout attempt (unescaped quotes + a real newline).
   const evilDescription = '"); process.exit(1); globalThis.pwned = true; ("\nsecond line';
   const evilTool: McpToolDefinition = {
@@ -78,7 +78,7 @@ describe("generateProject — untrusted text is escaped, not injected (P6-9, §1
   });
 });
 
-describe("generateProject — structure", () => {
+describe("generateProject: structure", () => {
   it("emits the expected project files (§12.4)", () => {
     expect([...fileMap(options).keys()]).toEqual([
       ".env.example",
@@ -107,7 +107,7 @@ describe("generateProject — structure", () => {
   });
 });
 
-describe("generateProject — tool wiring", () => {
+describe("generateProject: tool wiring", () => {
   const files = fileMap(options);
 
   it("substitutes path params via encodeURIComponent string concat", () => {
@@ -264,7 +264,7 @@ describe("generateProject: risk-aware runtime", () => {
   });
 });
 
-describe("generateProject — determinism", () => {
+describe("generateProject: determinism", () => {
   it("produces byte-identical output across runs", () => {
     expect(JSON.stringify(generateProject(options))).toBe(
       JSON.stringify(generateProject(options)),

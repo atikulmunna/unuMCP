@@ -51,7 +51,7 @@ describe("job recovery + idempotency (P6-6, NFR-006)", () => {
       },
     });
 
-    // Assert the OUTCOME (run becomes failed), not the count — a parallel test
+    // Assert the OUTCOME (run becomes failed), not the count: a parallel test
     // file's bootstrap reconcile could legitimately recover the same stale run.
     await reconciler.reconcile();
 

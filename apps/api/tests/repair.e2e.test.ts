@@ -135,7 +135,7 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
       model: "fake",
       latencyMs: 1,
     }));
-    // Sandbox keeps failing — the fix didn't help.
+    // Sandbox keeps failing; the fix didn't help.
     const sandbox: SandboxRunner = { run: async () => sandboxLog(FAIL_LOG) };
     const service = new RepairService(prisma, storage, sandbox, llm, { maxAttempts: 2, maxTokens: 100 });
 
@@ -193,7 +193,7 @@ describe("repair loop orchestrator (P4-5/P4-6, FR-026)", () => {
   it("records a failed attempt and settles TESTS_FAILED when the model touches a frozen test", async () => {
     const { projectId, runId } = await seedFailedRun("repair-frozen");
 
-    // The model tries to edit a test file — repairCode rejects it, so repair() throws.
+    // The model tries to edit a test file; repairCode rejects it, so repair() throws.
     const llm = fakeLlm(async () => {
       throw new Error("Repair attempted to edit a frozen test file: tests/lib.test.ts");
     });

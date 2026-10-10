@@ -5,7 +5,7 @@
  * or the UI.
  *
  * Pure and dependency-free. Deliberately conservative: it redacts known
- * credential shapes, auth-header values, and secret-named key/value pairs — it
+ * credential shapes, auth-header values, and secret-named key/value pairs. It
  * does not blanket-redact every long string, to keep diagnostic logs readable.
  */
 
@@ -21,7 +21,7 @@ const TOKEN_PATTERNS: RegExp[] = [
   /\bAIza[0-9A-Za-z_-]{35}\b/g,
 ];
 
-// "Authorization: Bearer xxx" / "authorization":"token xxx" — redact the value.
+// "Authorization: Bearer xxx" / "authorization":"token xxx": redact the value.
 const AUTH_HEADER =
   /\b(authorization|proxy-authorization)(["']?\s*[:=]\s*["']?)(?:bearer\s+|token\s+|basic\s+)?[A-Za-z0-9._\-+/=]{4,}/gi;
 
@@ -29,7 +29,7 @@ const AUTH_HEADER =
 const SECRET_KV =
   /\b(password|passwd|pwd|secret|client_secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|private[_-]?key)(\s*["']?\s*[:=]\s*["']?)([^\s"'`,;)]{6,})/gi;
 
-// Values that are clearly not real secrets — leave them legible.
+// Values that are clearly not real secrets; leave them legible.
 const PLACEHOLDER_VALUE =
   /^(?:your[_-]?|change[_-]?me|changeme|placeholder|example|sample|dummy|xxx|<|\$\{|process\.env|undefined|null|true|false)/i;
 

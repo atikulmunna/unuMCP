@@ -16,7 +16,7 @@ function ep(partial: Partial<ExtractedEndpoint>): ExtractedEndpoint {
   };
 }
 
-describe("generateToolName — adversarial inputs (P6-9, §18.4)", () => {
+describe("generateToolName: adversarial inputs (P6-9, §18.4)", () => {
   const SAFE = /^[a-z][a-z0-9_]*$/;
 
   it("sanitizes path-traversal and injection chars into a safe snake_case name", () => {

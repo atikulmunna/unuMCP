@@ -20,7 +20,7 @@ describe("createZip", () => {
     expect(await zip.file("src/index.ts")!.async("string")).toBe("console.log('hi');\n");
   });
 
-  it("is deterministic — same files produce byte-identical archives", async () => {
+  it("is deterministic: same files produce byte-identical archives", async () => {
     const a = await createZip(files);
     const b = await createZip([...files].reverse());
     expect(Buffer.compare(a, b)).toBe(0);

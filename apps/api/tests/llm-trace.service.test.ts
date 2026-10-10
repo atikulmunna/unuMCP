@@ -19,15 +19,6 @@ function fakePrisma() {
   return { prisma, create };
 }
 
-const facts = {
-  toolName: "create_issue",
-  method: "post",
-  path: "/repos/{owner}/{repo}/issues",
-  paramNames: ["owner", "repo"],
-  mutates: true,
-  riskLevel: "medium",
-};
-
 const GITHUB_PAT = "ghp_" + "A".repeat(36); // token-shaped secret
 
 describe("LlmTraceService (P5-5, FR-031)", () => {
@@ -82,7 +73,7 @@ describe("LlmTraceService (P5-5, FR-031)", () => {
     expect(data.metadata.outputSummary).toBeUndefined();
   });
 
-  it("never throws when the DB write fails — a trace must not break the pipeline", async () => {
+  it("never throws when the DB write fails; a trace must not break the pipeline", async () => {
     const prisma = {
       auditEvent: { create: vi.fn(async () => { throw new Error("db down"); }) },
     } as unknown as PrismaService;
@@ -97,53 +88,6 @@ describe("LlmTraceService (P5-5, FR-031)", () => {
 });
 
 describe("LlmService trace wiring (P5-5, FR-031)", () => {
-  const okClient = (): LlmClient => ({
-    complete: vi.fn(async () => ({
-      text: '{"description":"Creates an issue. Modifies data."}',
-      model: "meta/llama-3.3-70b-instruct",
-      usage: { inputTokens: 100, outputTokens: 12 },
-      latencyMs: 3,
-    })),
-  });
-
-  it("traces a successful describeTool when a project ctx is given", async () => {
-    const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
-    const trace = { record } as unknown as LlmTraceService;
-    const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, okClient(), trace);
-
-    await svc.describeTool(facts, { projectId: "p9" });
-    expect(record).toHaveBeenCalledOnce();
-    expect(record.mock.calls[0]![0]).toMatchObject({
-      projectId: "p9",
-      toolName: "propose_tool_description",
-      outputSummary: expect.stringMatching(/creates an issue/i),
-      inputTokens: 100,
-    });
-  });
-
-  it("does NOT trace when no project ctx is passed (back-compat)", async () => {
-    const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
-    const trace = { record } as unknown as LlmTraceService;
-    const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, okClient(), trace);
-    await svc.describeTool(facts);
-    expect(record).not.toHaveBeenCalled();
-  });
-
-  it("traces an errored describeTool but still returns null (never throws)", async () => {
-    const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
-    const trace = { record } as unknown as LlmTraceService;
-    const client: LlmClient = {
-      complete: vi.fn(async () => { throw new Error("NIM request failed (503)"); }),
-    };
-    const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, client, trace);
-
-    expect(await svc.describeTool(facts, { projectId: "p9" })).toBeNull();
-    expect(record.mock.calls[0]![0]).toMatchObject({
-      toolName: "propose_tool_description",
-      error: expect.stringContaining("503"),
-    });
-  });
-
   it("traces a repair error and rethrows so the orchestrator can stop", async () => {
     const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
     const trace = { record } as unknown as LlmTraceService;
@@ -159,7 +103,7 @@ describe("LlmService trace wiring (P5-5, FR-031)", () => {
   });
 });
 
-describe("LlmService.describeToolsBatch (P2-6, FR-031)", () => {
+describe("LlmService.describeAndRateToolsBatch (P2-6, FR-031)", () => {
   const batchClient = (): LlmClient => ({
     complete: vi.fn(async () => ({
       text: JSON.stringify({
@@ -184,7 +128,7 @@ describe("LlmService.describeToolsBatch (P2-6, FR-031)", () => {
     const trace = { record } as unknown as LlmTraceService;
     const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, batchClient(), trace);
 
-    const out = await svc.describeToolsBatch(twoInputs, { projectId: "p9" });
+    const out = (await svc.describeAndRateToolsBatch(twoInputs, { projectId: "p9" })).descriptions;
     expect(out[0]).toMatch(/creates an issue/i);
     expect(out[1]).toMatch(/fetches an issue/i);
     expect(record).toHaveBeenCalledOnce();
@@ -201,7 +145,7 @@ describe("LlmService.describeToolsBatch (P2-6, FR-031)", () => {
     const client: LlmClient = { complete: vi.fn(async () => { throw new Error("NIM 503"); }) };
     const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, client, trace);
 
-    const out = await svc.describeToolsBatch(twoInputs, { projectId: "p9" });
+    const out = (await svc.describeAndRateToolsBatch(twoInputs, { projectId: "p9" })).descriptions;
     expect(out).toEqual([null, null]);
     expect(record.mock.calls[0]![0]).toMatchObject({
       toolName: "propose_tool_descriptions_batch",
@@ -209,10 +153,18 @@ describe("LlmService.describeToolsBatch (P2-6, FR-031)", () => {
     });
   });
 
+  it("does not trace when no project ctx is passed", async () => {
+    const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
+    const trace = { record } as unknown as LlmTraceService;
+    const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, batchClient(), trace);
+    await svc.describeAndRateToolsBatch(twoInputs);
+    expect(record).not.toHaveBeenCalled();
+  });
+
   it("returns all-null when disabled, and empty for an empty batch", async () => {
     const disabled = new LlmService({ enabled: false, model: "m" });
-    expect(await disabled.describeToolsBatch(twoInputs)).toEqual([null, null]);
+    expect(await disabled.describeAndRateToolsBatch(twoInputs)).toEqual({ descriptions: [null, null], risks: [null, null] });
     const enabled = new LlmService({ enabled: true, model: "m", apiKey: "k" }, batchClient());
-    expect(await enabled.describeToolsBatch([])).toEqual([]);
+    expect(await enabled.describeAndRateToolsBatch([])).toEqual({ descriptions: [], risks: [] });
   });
 });

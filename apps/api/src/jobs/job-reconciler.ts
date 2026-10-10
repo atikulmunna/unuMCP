@@ -25,13 +25,13 @@ const STRANDED_STAGES = {
 
 /**
  * Crash recovery (P6-6, NFR-006 "mark failed jobs"). A `GenerationRun` left in
- * `running` after a process restart has no live worker driving it — it was
+ * `running` after a process restart has no live worker driving it: it was
  * orphaned by the crash. On boot we mark such runs failed (and their project a
  * failure state) so the pipeline isn't stuck forever and the user can retry.
  *
  * Only runs whose `startedAt` is older than `STALE_AFTER_MS` are touched, so a
  * genuinely in-flight run (seconds old, e.g. during a rolling restart or another
- * instance sharing the DB) is never killed — only ones that have clearly hung.
+ * instance sharing the DB) is never killed, only ones that have clearly hung.
  */
 @Injectable()
 export class JobReconciler implements OnApplicationBootstrap {
@@ -96,7 +96,7 @@ export class JobReconciler implements OnApplicationBootstrap {
 
     for (const run of orphaned) {
       // updateMany (not update) so a concurrently-deleted run/project yields a
-      // 0-row no-op instead of a P2025 throw — reconcile must be idempotent and
+      // 0-row no-op instead of a P2025 throw; reconcile must be idempotent and
       // safe to run from multiple instances sharing the DB.
       await this.prisma.$transaction([
         this.prisma.generationRun.updateMany({

@@ -36,7 +36,7 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
-      {/* Left — the pitch, on drafting paper. */}
+      {/* Left: the pitch, on drafting paper. */}
       <aside className="bg-blueprint relative hidden flex-col justify-between border-r border-line bg-paper p-12 lg:flex">
         <Brand href="/login" />
         <div className="max-w-md">
@@ -65,7 +65,7 @@ export default function LoginPage() {
         <p className="font-mono text-2xs text-ink-faint">Deterministic builds · Sandboxed tests · No secrets leave the box</p>
       </aside>
 
-      {/* Right — the form. */}
+      {/* Right: the form. */}
       <section className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm animate-fade-up">
           <div className="mb-8 lg:hidden">

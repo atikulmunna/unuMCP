@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   const pass = result.install.ok && result.test.ok && networkBlocked;
   console.log(
     pass
-      ? "OK: two-phase sandbox works — offline tests pass, network is isolated (OD-4)"
+      ? "OK: two-phase sandbox works: offline tests pass, network is isolated (OD-4)"
       : "FAIL: sandbox validation did not fully pass",
   );
   process.exit(pass ? 0 : 1);

@@ -37,7 +37,7 @@ describe("GeminiClient", () => {
     expect(body.model).toBe("gemini-3.5-flash");
     expect(body.temperature).toBe(0); // deterministic by default
     expect(body.response_format).toEqual({ type: "json_object" });
-    // Thinking disabled — Flash "thinking" spends output tokens and truncates our JSON.
+    // Thinking disabled: Flash "thinking" spends output tokens and truncates our JSON.
     expect(body.reasoning_effort).toBe("none");
   });
 

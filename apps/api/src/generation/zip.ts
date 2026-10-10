@@ -11,7 +11,7 @@ const FIXED_DATE = new Date(0);
 /**
  * Pack files into a deterministic ZIP: entries are sorted by path, stamped with
  * a fixed date, and stored uncompressed, so the same files always produce the
- * same bytes. Pure — no filesystem access.
+ * same bytes. Pure: no filesystem access.
  */
 export async function createZip(files: PackagedFile[]): Promise<Buffer> {
   const zip = new JSZip();

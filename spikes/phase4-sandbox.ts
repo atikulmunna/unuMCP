@@ -1,6 +1,6 @@
 /**
  * Phase 4 / P4-3 validation: prove the PRODUCTIONIZED sandbox path end-to-end
- * against real Docker — generate a server, materialize it into a CLEAN temp dir
+ * against real Docker: generate a server, materialize it into a CLEAN temp dir
  * (no host node_modules, finding F-3), run the real two-phase sandbox, and parse
  * the real Vitest output the same way TestingService does.
  *

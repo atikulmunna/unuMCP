@@ -37,7 +37,7 @@ export class TestingController {
 
   /**
    * Server-Sent Events stream of live sandbox output + status (P4-8, NFR-008).
-   * Consumed via `fetch` (so the Bearer token rides the Authorization header —
+   * Consumed via `fetch` (so the Bearer token rides the Authorization header;
    * native EventSource can't send headers). Completes after the `done` event so
    * the client closes cleanly.
    */

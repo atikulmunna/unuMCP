@@ -12,6 +12,7 @@ import {
   RepairOutcome,
   TestStatus,
   type GeneratedArtifact,
+  type GenerationRun,
   type GenerationStatus,
 } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
@@ -37,7 +38,7 @@ const DIFF_CAP = 20_000;
  * `tsconfig.json`, `.env.example`) stay frozen, so a repair can neither neuter
  * the test harness nor pull in a new dependency.
  */
-export function isRepairEditable(path: string): boolean {
+function isRepairEditable(path: string): boolean {
   return path.startsWith("src/") && path.endsWith(".ts") && !path.endsWith(".test.ts");
 }
 
@@ -75,22 +76,46 @@ export class RepairService {
 
   /**
    * Attempt to repair the latest failing run of a project. Safe to call when the
-   * LLM is disabled or there is nothing to repair — returns a no-op summary.
+   * LLM is disabled or there is nothing to repair: it returns a no-op summary.
    */
   async repairFailingRun(projectId: string): Promise<RepairSummary> {
-    if (!this.enabled) return { repaired: false, attempts: 0 };
+    const target = this.enabled ? await this.findRepairTarget(projectId) : null;
+    if (!target) return { repaired: false, attempts: 0 };
 
+    const dir = await mkdtemp(join(tmpdir(), "unumcp-repair-"));
+    try {
+      // Materialize the whole project once; only changed files are overwritten between passes.
+      for (const a of target.artifacts) {
+        const dest = join(dir, a.path);
+        await mkdir(dirname(dest), { recursive: true });
+        await writeFile(dest, await this.storage.read(a.contentUrl as string));
+      }
+      await this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.REPAIRING_FAILED_CODE },
+      });
+
+      const summary = await this.attemptRepairs(target, dir);
+      if (!summary.repaired) await this.settleExhausted(projectId, summary.attempts);
+      return summary;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** The latest run's last failure and its editable sources, or null when there's nothing to repair. */
+  private async findRepairTarget(projectId: string): Promise<RepairTarget | null> {
     const run = await this.prisma.generationRun.findFirst({
       where: { projectId },
       orderBy: { startedAt: "desc" },
     });
-    if (!run) return { repaired: false, attempts: 0 };
+    if (!run) return null;
 
     const lastFailure = await this.prisma.testResult.findFirst({
       where: { generationRunId: run.id, status: TestStatus.failed },
       orderBy: { createdAt: "desc" },
     });
-    if (!lastFailure) return { repaired: false, attempts: 0 };
+    if (!lastFailure) return null;
 
     const artifacts = await this.prisma.generatedArtifact.findMany({
       where: { projectId, contentUrl: { not: null } },
@@ -98,8 +123,7 @@ export class RepairService {
     const editable = artifacts.filter(
       (a) => a.artifactType === ArtifactType.source_file && isRepairEditable(a.path),
     );
-    if (editable.length === 0) return { repaired: false, attempts: 0 };
-    const byPath = new Map(editable.map((a) => [a.path, a]));
+    if (editable.length === 0) return null;
 
     // Repaired code must stay within the same host allowlist as generated code.
     const spec = await this.prisma.apiSpec.findFirst({
@@ -107,148 +131,165 @@ export class RepairService {
       orderBy: { createdAt: "desc" },
       select: { baseUrl: true },
     });
-    const baseUrl = spec?.baseUrl ?? DEFAULT_BASE_URL;
+    return {
+      projectId,
+      run,
+      failureLog: lastFailure.logExcerpt ?? "",
+      artifacts,
+      editable: new Map(editable.map((a) => [a.path, a])),
+      baseUrl: spec?.baseUrl ?? DEFAULT_BASE_URL,
+    };
+  }
 
-    const dir = await mkdtemp(join(tmpdir(), "unumcp-repair-"));
-    try {
-      // Materialize the whole project once; only changed files are overwritten between passes.
-      for (const a of artifacts) {
-        const dest = join(dir, a.path);
-        await mkdir(dirname(dest), { recursive: true });
-        await writeFile(dest, await this.storage.read(a.contentUrl as string));
-      }
-
-      await this.prisma.project.update({
-        where: { id: projectId },
-        data: { status: ProjectStatus.REPAIRING_FAILED_CODE },
-      });
-
-      // Attempts edit an in-memory copy of the stored (generated) sources; storage
-      // changes only when an attempt passes, so an exhausted loop never ships an
-      // unverified model edit. Each attempt builds on the previous one's code.
-      const original = new Map(
-        await Promise.all(
-          editable.map(async (a) => [a.path, await this.storage.read(a.contentUrl as string)] as const),
+  /**
+   * Up to `maxAttempts` passes. Attempts edit an in-memory copy of the stored
+   * (generated) sources, each building on the previous one's code; storage
+   * changes only when an attempt passes, so an exhausted loop never ships an
+   * unverified model edit.
+   */
+  private async attemptRepairs(target: RepairTarget, dir: string): Promise<RepairSummary> {
+    const original = new Map(
+      await Promise.all(
+        [...target.editable.values()].map(
+          async (a) => [a.path, await this.storage.read(a.contentUrl as string)] as const,
         ),
-      );
-      const current = new Map(original);
+      ),
+    );
+    const code = { original, current: new Map(original) };
+    // Accrue LLM cost across passes onto the run (NFR-007b, P6-7). Seeded from
+    // the run's current totals (proposal cost from generation) and SET each pass
+    // so it's null-safe (a plain `increment` on a NULL column stays NULL).
+    const cost: RunCost = {
+      inputTokens: target.run.inputTokens ?? 0,
+      outputTokens: target.run.outputTokens ?? 0,
+      costUsd: Number(target.run.estimatedCostUsd ?? 0),
+    };
 
-      let failureLog = lastFailure.logExcerpt ?? "";
-      let attemptsMade = 0;
-      let repaired = false;
-      // Accrue LLM cost across passes onto the run (NFR-007b, P6-7). Seeded from
-      // the run's current totals (proposal cost from generation) and SET each pass
-      // so it's null-safe (a plain `increment` on a NULL column stays NULL).
-      let accInputTokens = run.inputTokens ?? 0;
-      let accOutputTokens = run.outputTokens ?? 0;
-      let accCostUsd = Number(run.estimatedCostUsd ?? 0);
-
-      for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
-        attemptsMade = attempt;
-        const files: RepairFile[] = [...current].map(([path, content]) => ({ path, content }));
-
-        let changed: RepairFile[];
-        try {
-          const result = await this.llm.repair(
-            {
-              failureLog,
-              files,
-              maxTokens: this.config.maxTokens,
-            },
-            { projectId },
-          );
-          changed = result.files;
-          // Accrue the repair call's LLM cost onto the run (NFR-007b, P6-7).
-          accInputTokens += result.usage.inputTokens;
-          accOutputTokens += result.usage.outputTokens;
-          accCostUsd += estimateCostUsd(result.model, result.usage.inputTokens, result.usage.outputTokens);
-          await this.prisma.generationRun.update({
-            where: { id: run.id },
-            data: {
-              inputTokens: accInputTokens,
-              outputTokens: accOutputTokens,
-              estimatedCostUsd: accCostUsd,
-              llmModelId: result.model,
-            },
-          });
-        } catch (err) {
-          // LLM error or a rejected edit (e.g. it tried to touch a frozen test).
-          this.logger.warn(
-            `Repair attempt ${attempt} produced no usable fix (${err instanceof Error ? err.name : "error"}); stopping.`,
-          );
-          await this.recordAttempt(run.id, attempt, failureLog, "", RepairOutcome.failed);
-          break;
-        }
-
-        // Diff against this attempt's starting code (so each attempt's diff is its own edit).
-        const diff = changed
-          .map((f) => unifiedDiff(current.get(f.path) ?? "", f.content, f.path))
-          .filter((d) => d.length > 0)
-          .join("\n\n");
-
-        // Security gate before anything is written: repaired code is
-        // model-authored, so it gets the same scan as generated code. Only the
-        // changed files need scanning; the rest already passed at generation.
-        const scan = scanForPackaging(changed, baseUrl);
-        if (!scan.passed) {
-          await this.rejectInsecureRepair(projectId, run.id, attempt, failureLog, diff, scan);
-          break;
-        }
-
-        // Apply to the working copy only (repairCode already enforces the editable allowlist).
-        for (const f of changed) {
-          current.set(f.path, f.content);
-          await writeFile(join(dir, f.path), f.content);
-        }
-
-        // Rerun the sandbox on the patched project.
-        const startedAt = Date.now();
-        const result = await this.sandbox.run(dir);
-        const durationMs = Date.now() - startedAt;
-        const { summary, passed, infraFailed, log } = classifyRun(result);
-
-        // A passing fix is saved before its result is recorded, so a TESTS_PASSED
-        // project always has the tested code in storage.
-        if (passed) await this.saveRepairedSources(byPath, original, current);
-
-        const outcome = passed ? RepairOutcome.passed : RepairOutcome.failed;
-        await this.recordAttempt(run.id, attempt, failureLog, diff, outcome);
-        await this.recordRerun(run.id, projectId, summary, durationMs, log, passed, infraFailed);
-
-        if (passed) {
-          this.logger.log(`Repair succeeded for project ${projectId} after ${attempt} attempt(s).`);
-          repaired = true;
-          break;
-        }
-        failureLog = log;
+    let failureLog = target.failureLog;
+    let attempts = 0;
+    for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
+      attempts = attempt;
+      const outcome = await this.attemptOnce(target, dir, attempt, failureLog, code, cost);
+      if (outcome.status === "passed") {
+        this.logger.log(`Repair succeeded for project ${target.projectId} after ${attempt} attempt(s).`);
+        return { repaired: true, attempts };
       }
-
-      if (!repaired) {
-        // Exhausted, or stopped early before a rerun: never leave the project
-        // mid-repair. Settle on TESTS_FAILED (partial output, never silent
-        // success) with the generated code still in storage, untouched.
-        await this.prisma.$transaction([
-          this.prisma.project.update({
-            where: { id: projectId },
-            data: { status: ProjectStatus.TESTS_FAILED },
-          }),
-          this.prisma.auditEvent.create({
-            data: {
-              projectId,
-              eventType: "repair_exhausted",
-              actor: "agent",
-              summary: `Repair did not pass after ${attemptsMade} attempt(s); the generated code was kept unchanged (every attempt is in the repair history).`,
-            },
-          }),
-        ]);
-        this.logger.warn(
-          `Repair did not pass after ${attemptsMade} attempt(s) for project ${projectId}; left TESTS_FAILED.`,
-        );
-      }
-      return { repaired, attempts: attemptsMade };
-    } finally {
-      await rm(dir, { recursive: true, force: true });
+      if (outcome.status === "stopped") break;
+      failureLog = outcome.log;
     }
+    return { repaired: false, attempts };
+  }
+
+  /** One pass: ask for a fix, scan it, apply it to the working copy, and rerun the tests. */
+  private async attemptOnce(
+    target: RepairTarget,
+    dir: string,
+    attempt: number,
+    failureLog: string,
+    code: { original: Map<string, string>; current: Map<string, string> },
+    cost: RunCost,
+  ): Promise<AttemptOutcome> {
+    const { projectId, run } = target;
+    const changed = await this.askForFix(target, attempt, failureLog, code.current, cost);
+    if (!changed) return { status: "stopped" };
+
+    // Diff against this attempt's starting code (so each attempt's diff is its own edit).
+    const diff = changed
+      .map((f) => unifiedDiff(code.current.get(f.path) ?? "", f.content, f.path))
+      .filter((d) => d.length > 0)
+      .join("\n\n");
+
+    // Security gate before anything is written: repaired code is model-authored,
+    // so it gets the same scan as generated code. Only the changed files need
+    // scanning; the rest already passed at generation.
+    const scan = scanForPackaging(changed, target.baseUrl);
+    if (!scan.passed) {
+      await this.rejectInsecureRepair(projectId, run.id, attempt, failureLog, diff, scan);
+      return { status: "stopped" };
+    }
+
+    // Apply to the working copy only (repairCode already enforces the editable allowlist).
+    for (const f of changed) {
+      code.current.set(f.path, f.content);
+      await writeFile(join(dir, f.path), f.content);
+    }
+
+    const startedAt = Date.now();
+    const result = await this.sandbox.run(dir);
+    const durationMs = Date.now() - startedAt;
+    const { summary, passed, infraFailed, log } = classifyRun(result);
+
+    // A passing fix is saved before its result is recorded, so a TESTS_PASSED
+    // project always has the tested code in storage.
+    if (passed) await this.saveRepairedSources(target.editable, code.original, code.current);
+
+    const outcome = passed ? RepairOutcome.passed : RepairOutcome.failed;
+    await this.recordAttempt(run.id, attempt, failureLog, diff, outcome);
+    await this.recordRerun(run.id, projectId, summary, durationMs, log, passed, infraFailed);
+    return passed ? { status: "passed" } : { status: "failed", log };
+  }
+
+  /**
+   * Ask the LLM for a fix and accrue the call's cost onto the run. Returns null,
+   * after recording the failed attempt, on an LLM error or a rejected edit (for
+   * example one that tried to touch a frozen test).
+   */
+  private async askForFix(
+    target: RepairTarget,
+    attempt: number,
+    failureLog: string,
+    current: Map<string, string>,
+    cost: RunCost,
+  ): Promise<RepairFile[] | null> {
+    const files: RepairFile[] = [...current].map(([path, content]) => ({ path, content }));
+    try {
+      const result = await this.llm.repair(
+        { failureLog, files, maxTokens: this.config.maxTokens },
+        { projectId: target.projectId },
+      );
+      cost.inputTokens += result.usage.inputTokens;
+      cost.outputTokens += result.usage.outputTokens;
+      cost.costUsd += estimateCostUsd(result.model, result.usage.inputTokens, result.usage.outputTokens);
+      await this.prisma.generationRun.update({
+        where: { id: target.run.id },
+        data: {
+          inputTokens: cost.inputTokens,
+          outputTokens: cost.outputTokens,
+          estimatedCostUsd: cost.costUsd,
+          llmModelId: result.model,
+        },
+      });
+      return result.files;
+    } catch (err) {
+      this.logger.warn(
+        `Repair attempt ${attempt} produced no usable fix (${err instanceof Error ? err.name : "error"}); stopping.`,
+      );
+      await this.recordAttempt(target.run.id, attempt, failureLog, "", RepairOutcome.failed);
+      return null;
+    }
+  }
+
+  /**
+   * Exhausted, or stopped early before a rerun: never leave the project
+   * mid-repair. Settle on TESTS_FAILED (partial output, never silent success)
+   * with the generated code still in storage, untouched.
+   */
+  private async settleExhausted(projectId: string, attempts: number): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.project.update({
+        where: { id: projectId },
+        data: { status: ProjectStatus.TESTS_FAILED },
+      }),
+      this.prisma.auditEvent.create({
+        data: {
+          projectId,
+          eventType: "repair_exhausted",
+          actor: "agent",
+          summary: `Repair did not pass after ${attempts} attempt(s); the generated code was kept unchanged (every attempt is in the repair history).`,
+        },
+      }),
+    ]);
+    this.logger.warn(`Repair did not pass after ${attempts} attempt(s) for project ${projectId}; left TESTS_FAILED.`);
   }
 
   /**
@@ -377,6 +418,27 @@ export class RepairService {
     ]);
   }
 }
+
+/** What a repair works on: the failing run, its last failure, and its sources. */
+interface RepairTarget {
+  projectId: string;
+  run: GenerationRun;
+  failureLog: string;
+  /** Every stored artifact, to materialize the whole project. */
+  artifacts: GeneratedArtifact[];
+  /** The sources a repair may edit, by path. */
+  editable: Map<string, GeneratedArtifact>;
+  baseUrl: string;
+}
+
+/** LLM usage accrued onto the run across repair passes. */
+interface RunCost {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+type AttemptOutcome = { status: "passed" } | { status: "stopped" } | { status: "failed"; log: string };
 
 interface RunOutcome {
   summary: TestSummary;

