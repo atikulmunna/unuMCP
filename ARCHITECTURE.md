@@ -25,10 +25,10 @@ upload spec ─► validate + dereference ─► extract endpoints ─► propos
 | Parse and validate | `packages/openapi` (`validate.ts`) | JSON or YAML OpenAPI 3.x; Swagger 2.0 is refused with conversion advice rather than misread |
 | Dereference | `packages/openapi` (`dereference.ts`) | No `$ref` left; cycles kept as object cycles that every later walk guards against |
 | Extract | `packages/openapi` (`extract.ts`) | One record per operation: parameters, request body (JSON, `+json`, or form; anything else reported), auth, deprecation |
-| Propose | `packages/analysis` | Deterministic name (from `operationId`), risk level, input schema; high-risk, deprecated, and unsendable endpoints start disabled |
-| Describe | `packages/llm`, `apps/api/src/tools` | Optional LLM-written descriptions, batched; spec text is treated as data |
+| Propose | `packages/analysis` | Deterministic name (from `operationId`), risk level (method, sensitive nouns, and action words such as `merge` or `transfer`), input schema; high-risk, deprecated, and unsendable endpoints start disabled |
+| Describe | `packages/llm`, `apps/api/src/tools` | Optional LLM-written descriptions, batched; spec text is treated as data; the LLM's risk rating can raise a tool's risk (audited), never lower it |
 | Approve | `apps/api/src/tools` | A person chooses the final tool set; names stay unique |
-| Generate | `packages/codegen`, `packages/schema-gen` | A complete TypeScript MCP server, byte-identical for the same inputs |
+| Generate | `packages/codegen`, `packages/schema-gen` | A complete TypeScript MCP server, byte-identical for the same inputs, with behavior hints on each tool and a runtime safety policy |
 | Scan | `packages/security-scan` | Refuses secrets, foreign hosts in code, eval or shell use, disallowed dependencies |
 | Test | `packages/sandbox`, `apps/api/src/testing` | A typecheck, then the server's contract tests, in a locked-down, offline container |
 | Repair | `apps/api/src/repair`, `packages/llm` | Bounded LLM fixes to implementation files only; saved only when tests pass |
@@ -68,6 +68,19 @@ cheap.
 **One human gate.** Tool proposal is automatic, but nothing is generated until
 a person approves the tool set. Risky tools are visible and off by default
 instead of silently included.
+
+**Risk is enforced where the tools run.** Approval decides which tools exist;
+the generated server decides how they run. Every tool call goes through one
+function, `runTool` in the generated `src/policy.ts`, so no tool can skip the
+policy. A tool at or above `MCP_CONFIRM_RISK` (default `high`) runs only after
+the user approves the exact request through MCP elicitation, and a client
+without elicitation gets a refusal rather than an unapproved call. `MCP_DRY_RUN`
+makes tools that can change data return their planned request; `MCP_READ_ONLY`
+and the allow and deny lists decide which tools are exposed at all. Read-only
+means GET or HEAD only: a POST that merely searches is still treated as a
+write, because a wrong "read-only" would skip the other guards. A setting the
+server can't parse, or a tool list naming a tool that doesn't exist, stops it
+at startup, so a typo can't switch a guard off.
 
 **A sandbox with no install step.** Every generated server declares the same
 dependency set, so those dependencies are baked into a prebuilt image tagged by
@@ -112,7 +125,8 @@ Either way, a boot-time reconciler settles anything a crash stranded.
 | Untrusted input | Contained by |
 | --- | --- |
 | The uploaded spec (names, descriptions, URLs, schemas) | Size limits; every spec-derived string reaches generated code only through `JSON.stringify`; names sanitized to snake_case; descriptions flagged for prompt-injection patterns and given to the LLM as data |
-| LLM output (descriptions, repair edits) | Descriptions checked for secret-shaped text; repair edits limited to an allowlist of files, parsed strictly, security-scanned, and kept only if tests pass |
+| LLM output (descriptions, risk ratings, repair edits) | Descriptions checked for secret-shaped text; a risk rating can only raise risk; repair edits limited to an allowlist of files, parsed strictly, security-scanned, and kept only if tests pass |
+| The agent driving a generated server | Risky calls need the user's approval through MCP elicitation; read-only mode, allow and deny lists, and dry runs set by whoever runs the server |
 | Generated code at test time | The locked-down, offline sandbox container, with a timeout that removes the container itself |
 | API clients | JWT auth (the API refuses to start without a strong secret), per-project ownership checks returning 404, per-client rate limits behind the trusted local proxy, one sanitized error envelope |
 | Logs and stored output | Secret redaction before anything is persisted or shown |
@@ -150,7 +164,12 @@ inputs, the auth header, and the body in its media type. The test calls the
 tool through a real MCP client connected in memory, with `fetch` stubbed, and
 compares. It also checks that the response reaches the agent unchanged, that
 an API error becomes a tool error, and that a call missing required inputs is
-rejected without reaching the API. A server-level test checks the tool listing.
+rejected without reaching the API. For a high or critical tool it checks that
+the user is asked once, with the exact request, and that nothing is sent when
+the user declines or the client can't ask; for a tool that can change data, that
+a dry run sends nothing; for a read-only one, that a dry run still reads. A
+server-level test checks the tool listing and its behavior hints, read-only
+mode, the allow and deny lists, and parsing of the policy settings.
 In the sandbox, `tsc --noEmit` runs first, since Vitest only strips types.
 
 ## Reading the code: requirement tags

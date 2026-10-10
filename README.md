@@ -48,9 +48,11 @@ The platform is a **deterministic pipeline with one human gate**, not an open-en
 Upload OpenAPI spec
   → validate + dereference ($ref / allOf / oneOf)
   → analyse endpoints → propose tools (deterministic name + risk + input schema;
-                                       optional LLM-authored descriptions)
+                                       optional LLM-authored descriptions, and an
+                                       LLM risk rating that can only raise risk)
   → 👤 human approval  (high-risk tools disabled by default)
-  → generate TypeScript MCP server  (deterministic codegen)
+  → generate TypeScript MCP server  (deterministic codegen, with a runtime
+                                     safety policy: approval, dry run, read-only)
   → static security scan  (refuse code that smells of secrets / exfiltration / eval)
   → run tests in a locked-down Docker sandbox  (deps prebuilt into the image, test offline)
   → on failure: bounded self-repair loop  (fix implementation only, tests frozen)
@@ -62,6 +64,7 @@ Design principles worth knowing before you read the code:
 - **Determinism first.** All *structural* artifacts (project scaffold, handler wiring, env detection, tests) are generated deterministically. The LLM is used **only** for prose (tool descriptions) and for repair edits — never to produce structural code. The platform runs end-to-end with the LLM disabled (you just get fallback descriptions and no repair).
 - **The LLM is swappable.** `@unumcp/llm` is a provider-agnostic seam. It ships with **Google Gemini** (free tier) and **NVIDIA NIM** over their OpenAI-compatible APIs, auto-selected from whichever key is set, plus **Anthropic Claude** (default Claude Haiku 4.5) via the official SDK as a paid, explicit opt-in. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
 - **Generated tests check the contract, not just that code runs.** Each tool is called through a real MCP client (in-memory transport) with the API stubbed, and its test asserts the exact HTTP request the spec defines: method, path, query (OpenAPI's default serialization), headers, auth, and body encoding. It also checks that the response reaches the agent unchanged, that API errors become tool errors, and that calls missing required inputs are rejected. The sandbox typechecks the server before running them. Injected bugs (wrong path, a dropped header or auth, a misencoded body, swallowed errors) all fail.
+- **Risk is enforced at runtime, not just shown at approval.** Risk comes from rules (method, sensitive nouns, and action words a method hides, such as `merge` or `transfer`); the LLM may rate a tool riskier, never safer, and a raise is audited. Every generated server carries the result: MCP behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on each tool, and a policy set by environment variables (`MCP_READ_ONLY`, `MCP_ENABLED_TOOLS`, `MCP_DISABLED_TOOLS`, `MCP_DRY_RUN`, `MCP_CONFIRM_RISK`). By default a high or critical tool runs only after the user approves the exact request through MCP elicitation; a client that can't ask gets a refusal, not a silent call. The generated tests prove each path (approve, decline, no elicitation support, dry run, read-only filtering), and removing any guard fails them.
 - **Tests are frozen during repair.** The repair loop may edit `src/**/*.ts` only: tests, `package.json`, and `tsconfig.json` are never offered to the model, and the parser rejects any other path. Every repair passes the same security scan as generated code before it is applied, and a run only counts as passing when at least one test reports a pass, so an edit can't win by making the suite run nothing.
 - **Every internal LLM call is traced.** Each agent tool call (`propose_tool_descriptions_batch`, `repair_code`) is recorded as an audit event with token counts, and its cost rolls up into per-run and platform metrics — secrets redacted throughout.
 
@@ -216,7 +219,8 @@ Two dependency-free surfaces (the JSON shapes are drop-in for a real shipper lat
 
 ## Security posture
 
-- **Human approval gate** before any code is generated; high-risk tools (destructive verbs) are disabled by default.
+- **Human approval gate** before any code is generated; high and critical tools (deletes, admin and auth endpoints, and irreversible actions like `merge` or `transfer`) are disabled by default.
+- **Runtime approval in the generated server**: risky calls wait for the user's approval through MCP elicitation, and the server can be limited to read-only tools, an allow list, or dry runs (see the generated README's "Safety controls").
 - **Static security scan** of generated code and of every LLM repair before it is persisted or packaged: refuses injected secrets, exfiltration hosts, and `eval`/shell patterns. Code is read through the TypeScript parser, so documentation (comments, tool and field descriptions) isn't mistaken for behaviour; that agent-facing text gets its own check: the API's own docs links pass, other links are noted for review, and an instruction to send data to an outside host is refused (tool poisoning).
 - **Locked-down sandbox, no install step**: every generated server declares the same dependency set, so it is baked into a prebuilt, content-hashed image and nothing is downloaded or installed at test time (a project declaring anything else is refused before any container starts). Tests run as the image's own Vitest (never a project `npm` script) with `--network none`, a non-root user, all capabilities dropped, `no-new-privileges`, CPU/memory/pid caps, a read-only root FS, and the project mounted read-only. Runs are serialized (`SANDBOX_CONCURRENCY`), and a timeout or cancel force-removes the container through the Docker daemon.
 - **No default signing key**: the API will not boot without a `JWT_SECRET` of at least 32 characters.
