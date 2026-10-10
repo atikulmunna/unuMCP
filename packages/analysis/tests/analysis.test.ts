@@ -65,6 +65,23 @@ describe("scoreRisk", () => {
     expect(scoreRisk(ep({ method: "post", path: "/issues" }), "create")).toBe("medium");
   });
 
+  it("raises risk for irreversible or control-transferring actions the method hides", () => {
+    const risk = (method: string, path: string, operationId?: string) => {
+      const e = ep({ method, path, operationId });
+      return scoreRisk(e, classifyEndpoint(e));
+    };
+    // GitHub's own examples: both used to score "medium" and ship enabled.
+    expect(risk("put", "/repos/{owner}/{repo}/pulls/{pull_number}/merge", "pulls/merge")).toBe("high");
+    expect(risk("post", "/repos/{owner}/{repo}/transfer", "repos/transfer")).toBe("critical");
+    expect(risk("post", "/repos/{owner}/{repo}/merges", "repos/merge")).toBe("high");
+    expect(risk("post", "/orgs/{org}/keys/{id}/revoke")).toBe("high");
+    // Ordinary writes stay medium; "deployments" is not "deploy".
+    expect(risk("post", "/repos/{owner}/{repo}/issues", "issues/create")).toBe("medium");
+    expect(risk("post", "/repos/{owner}/{repo}/deployments", "repos/create-deployment")).toBe("medium");
+    // Reads naming an action stay reads: "is this pull request merged?"
+    expect(risk("get", "/repos/{owner}/{repo}/pulls/{pull_number}/merge", "pulls/check-if-merged")).toBe("low");
+  });
+
   it("escalates destructive and sensitive operations", () => {
     expect(scoreRisk(ep({ method: "delete", path: "/users/{id}" }), "delete")).toBe("critical");
     expect(scoreRisk(ep({ method: "delete", path: "/webhooks/{id}" }), "delete")).toBe("high");

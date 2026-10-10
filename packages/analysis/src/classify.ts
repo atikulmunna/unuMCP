@@ -31,19 +31,42 @@ export function classifyEndpoint(e: ExtractedEndpoint): OperationType {
 const SENSITIVE =
   /payment|billing|charge|invoice|card|secret|password|token|key|credential|permission|role/;
 
+/**
+ * Actions named in the path or operationId that are hard or impossible to
+ * undo, or that hand control to someone else. The HTTP method alone misses
+ * them: GitHub's `PUT .../pulls/{n}/merge` and `POST .../transfer` look like
+ * ordinary updates. Whole words, with plural and past-tense endings.
+ */
+const CRITICAL_ACTIONS = /\b(?:transfer|purge|destroy|wipe|erase)(?:s|es|ed|d)?\b/;
+const HIGH_ACTIONS =
+  /\b(?:merge|revoke|suspend|ban|reset|rotate|regenerate|publish|deploy|rollback|terminate|remove|delete|force)(?:s|es|ed|d)?\b/;
+
+const RISK_RANK: Record<RiskLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+
+/** The higher of two risk levels. */
+export function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
+  return RISK_RANK[a] >= RISK_RANK[b] ? a : b;
+}
+
 /** Rule-based risk scoring (FR-010, NFR-003). */
 export function scoreRisk(e: ExtractedEndpoint, operationType: OperationType): RiskLevel {
   const hay = haystack(e);
   const sensitive = SENSITIVE.test(hay);
 
+  let risk: RiskLevel;
   if (operationType === "delete") {
-    return sensitive || /user|account|prod/.test(hay) ? "critical" : "high";
+    risk = sensitive || /user|account|prod/.test(hay) ? "critical" : "high";
+  } else if (operationType === "admin" || operationType === "auth") {
+    risk = "high";
+  } else if (operationType === "create" || operationType === "update" || operationType === "upload") {
+    risk = sensitive ? "high" : "medium";
+  } else {
+    // read / search / download: action words name what is read, not done.
+    return sensitive ? "medium" : "low";
   }
-  if (operationType === "admin") return "high";
-  if (operationType === "auth") return "high";
-  if (operationType === "create" || operationType === "update" || operationType === "upload") {
-    return sensitive ? "high" : "medium";
-  }
-  // read / search / download
-  return sensitive ? "medium" : "low";
+
+  // Action words can only raise the risk of an operation that changes something.
+  if (CRITICAL_ACTIONS.test(hay)) return "critical";
+  if (HIGH_ACTIONS.test(hay)) return maxRisk(risk, "high");
+  return risk;
 }
