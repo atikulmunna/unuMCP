@@ -7,6 +7,12 @@ overrides:
   # instances we construct (P6-6); without this two copies (5.10.x via bullmq,
   # 5.11.x direct) collide on the ConnectionOptions type.
   ioredis: 5.11.1
+  # Next pins postcss 8.4.31, which has known advisories (XSS, arbitrary file
+  # read, source-map path traversal); 8.5 is a compatible minor with the fixes.
+  next>postcss: ^8.5.29
+  # Prisma's config loader pins deepmerge-ts 7 (stack exhaustion on recursive
+  # objects, fixed in 8). It only calls `deepmerge`, which 8 keeps unchanged.
+  "@prisma/config>deepmerge-ts": ^8.0.2
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

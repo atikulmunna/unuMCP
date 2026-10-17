@@ -4,7 +4,8 @@ import { apiClientFile, apiErrorFile, envConfigFile, indexFile, policyFile, serv
 import { schemaFile, toolFile } from "./tool-files";
 import { harnessFile, serverTestFile, testFile } from "./test-files";
 
-const DEFAULT_MCP_SDK_VERSION = "1.29.0";
+/** The MCP SDK every generated server pins (the sandbox image bakes in the same one). */
+export const MCP_SDK_VERSION = "1.32.1";
 const DEFAULT_ZOD_VERSION = "^3.25.0";
 
 /**
@@ -47,7 +48,7 @@ function normalize(o: GenerateOptions): NormalizedOptions {
     baseUrlEnvVar: o.baseUrlEnvVar ?? "API_BASE_URL",
     tools: o.tools,
     auth: o.auth,
-    mcpSdkVersion: o.mcpSdkVersion ?? DEFAULT_MCP_SDK_VERSION,
+    mcpSdkVersion: o.mcpSdkVersion ?? MCP_SDK_VERSION,
     zodVersion: o.zodVersion ?? DEFAULT_ZOD_VERSION,
   };
 }

@@ -7,7 +7,7 @@ import {
 import { createHash } from "node:crypto";
 import { dereferenceSpec, detectAuth, extractEndpoints } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
-import { generateProject } from "@unumcp/codegen";
+import { generateProject, MCP_SDK_VERSION } from "@unumcp/codegen";
 import type { GeneratedFile, RiskLevel } from "@unumcp/codegen";
 import { summarizeScan, redactSecrets, type ScanFinding } from "@unumcp/security-scan";
 import { ArtifactType, type Prisma } from "@unumcp/db";
@@ -21,7 +21,6 @@ import { DEFAULT_BASE_URL, scanForPackaging } from "./security-gate";
 import { computeWarnings, renderWarningsMarkdown, testOutcomeOf } from "../completion/warnings";
 import { latestStoredCodeResult } from "../testing/test-results";
 
-const MCP_SDK_VERSION = "1.29.0";
 
 const TOOL_WITH_ENDPOINT = { endpoints: { include: { endpoint: true } } } as const;
 type ToolWithEndpoint = Prisma.ToolCandidateGetPayload<{ include: typeof TOOL_WITH_ENDPOINT }>;

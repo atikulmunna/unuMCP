@@ -12,7 +12,7 @@ import { join } from "node:path";
  * declares anything else fails the dependency check before any container runs.
  */
 export const SANDBOX_DEPENDENCIES: Readonly<Record<string, string>> = {
-  "@modelcontextprotocol/sdk": "1.29.0",
+  "@modelcontextprotocol/sdk": "1.32.1",
   zod: "^3.25.0",
   "@types/node": "^22.0.0",
   tsx: "^4.19.0",

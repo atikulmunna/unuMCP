@@ -4,6 +4,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import JSZip from "jszip";
+import { MCP_SDK_VERSION } from "@unumcp/codegen";
 import { AppModule } from "../src/app.module";
 import { PrismaService } from "../src/prisma/prisma.service";
 
@@ -109,7 +110,7 @@ describe("code generation (P3-9)", () => {
       .get(`/projects/${projectId}/generation`)
       .set(auth);
     expect(latest.body.run.status).toBe("passed");
-    expect(latest.body.run.mcpSdkVersion).toBe("1.29.0");
+    expect(latest.body.run.mcpSdkVersion).toBe(MCP_SDK_VERSION);
 
     const paths = latest.body.artifacts.map((a: any) => a.path);
     // Core scaffold + a per-tool implementation (only the low-risk read is enabled/approved).

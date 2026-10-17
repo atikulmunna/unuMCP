@@ -1,4 +1,4 @@
-export { generateProject } from "./generate";
+export { generateProject, MCP_SDK_VERSION } from "./generate";
 export type {
   McpToolDefinition,
   ToolParameterBinding,
