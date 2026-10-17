@@ -11,7 +11,7 @@ export function TopBar({ user }: { user: SessionUser | null }) {
   const initial = (user?.name ?? user?.email ?? "?").charAt(0).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-paper/85 backdrop-blur-sm">
+    <header className="sticky top-0 z-20 border-b border-line bg-paper/85 backdrop-blur-xs">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5 sm:px-8">
         <div className="flex items-center gap-3">
           <Brand />

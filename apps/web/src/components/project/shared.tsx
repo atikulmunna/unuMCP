@@ -47,7 +47,7 @@ export function Stat({
   return (
     <div className={className}>
       <dt className="eyebrow mb-1">{label}</dt>
-      <dd className={cx("truncate text-sm text-ink", mono && "font-mono text-[0.8125rem]")}>{value}</dd>
+      <dd className={cx("truncate text-sm text-ink", mono && "font-mono")}>{value}</dd>
     </div>
   );
 }

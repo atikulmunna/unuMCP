@@ -10,8 +10,8 @@ type Size = "sm" | "md";
 const VARIANT: Record<Variant, string> = {
   primary: "bg-ink text-paper border-ink hover:bg-ink-soft active:bg-ink disabled:bg-ink/40",
   secondary: "bg-panel text-ink border-line-strong hover:border-ink/40 hover:bg-paper",
-  ghost: "bg-transparent text-ink-soft border-transparent hover:bg-ink/[0.05]",
-  danger: "bg-panel text-bad border-bad/30 hover:bg-bad/[0.06] hover:border-bad/50",
+  ghost: "bg-transparent text-ink-soft border-transparent hover:bg-ink/5",
+  danger: "bg-panel text-bad border-bad/30 hover:bg-bad/6 hover:border-bad/50",
 };
 
 const SIZE: Record<Size, string> = {
@@ -110,7 +110,7 @@ export function Panel({
 /* ── Badge / status pip ─────────────────────────────────────────────────── */
 
 const TONE_BADGE: Record<Tone, string> = {
-  neutral: "bg-ink/[0.05] text-ink-soft border-line-strong",
+  neutral: "bg-ink/5 text-ink-soft border-line-strong",
   clay: "bg-clay-wash text-clay border-clay/25",
   ok: "bg-ok-wash text-ok border-ok/25",
   warn: "bg-warn-wash text-warn border-warn/25",

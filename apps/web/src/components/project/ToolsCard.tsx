@@ -144,7 +144,7 @@ function Toggle({
     >
       <span
         className={cx(
-          "h-3.5 w-3.5 rounded-full bg-panel shadow-sm transition-transform",
+          "h-3.5 w-3.5 rounded-full bg-panel shadow-xs transition-transform",
           checked ? "translate-x-[18px]" : "translate-x-[2px]",
         )}
       />

@@ -1,11 +1,128 @@
-/* Fonts load at runtime (no build-time network dependency); the stacks in
-   tailwind.config.ts degrade gracefully to local serif/sans/mono if Google
+/* Fonts load at runtime (no build-time network dependency); the font stacks
+   in the theme below degrade gracefully to local serif/sans/mono if Google
    Fonts is unreachable. */
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,380;9..144,460;9..144,560;9..144,640&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@420;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,380;9..144,460;9..144,560;9..144,640&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@420;500&display=swap")
+layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* unuMCP visual language: an editorial workbench, not a SaaS template.
+    - warm paper surface + near-black ink, hairline borders instead of big shadows
+    - one warm accent (clay/terracotta) for "your turn" moments; status colors
+      are reserved strictly for pipeline state (pass/fail/warn/run)
+    - serif for display headings, mono for the technical ledger (methods, ids, counts) */
+@theme {
+  --color-paper: #faf8f3;
+  --color-panel: #ffffff;
+
+  --color-ink: #1b1a16;
+  --color-ink-soft: #3c3a33;
+  --color-ink-muted: #6e6a5f;
+  --color-ink-faint: #9b968a;
+
+  --color-line: #e8e3d7;
+  --color-line-strong: #d9d2c2;
+
+  --color-clay: #b0512b;
+  --color-clay-soft: #c16a45;
+  --color-clay-wash: #f5eae1;
+
+  --color-ok: #2e7850;
+  --color-ok-wash: #e7f1ea;
+
+  --color-warn: #946610;
+  --color-warn-wash: #f6edd7;
+
+  --color-bad: #ae3a33;
+  --color-bad-wash: #f6e6e4;
+
+  --color-run: #2b5c97;
+  --color-run-wash: #e6ecf5;
+
+  --font-serif: Fraunces, Iowan Old Style, Georgia, Cambria, serif;
+  --font-sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --shadow-card:
+    0 1px 2px rgba(27, 26, 22, 0.04), 0 1px 1px rgba(27, 26, 22, 0.03);
+  --shadow-lift: 0 6px 24px -10px rgba(27, 26, 22, 0.2);
+  --shadow-ring: 0 0 0 3px rgba(176, 81, 43, 0.18);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-2xs--letter-spacing: 0.02em;
+
+  --tracking-eyebrow: 0.14em;
+
+  --animate-fade-up: fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pulse-soft: pulse-soft 1.4s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility eyebrow {
+  @apply font-mono text-2xs uppercase tracking-eyebrow text-ink-faint;
+}
+
+@utility hairline {
+  @apply border border-line;
+}
+
+@utility scroll-slim {
+  /* Thin scrollbars inside code/log panes so they read like a terminal. */
+  &::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  &::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-ink/15;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink/25;
+  }
+}
 
 @layer base {
   :root {
@@ -42,30 +159,14 @@
     font-feature-settings: "ss01";
   }
 
+  /* Tailwind 4 dropped the pointer cursor on buttons; keep v3's behaviour. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
   *:focus-visible {
-    @apply outline-none ring-2 ring-clay/40 ring-offset-1 ring-offset-paper;
+    @apply outline-hidden ring-2 ring-clay/40 ring-offset-1 ring-offset-paper;
     border-radius: 4px;
-  }
-}
-
-@layer components {
-  .eyebrow {
-    @apply font-mono text-2xs uppercase tracking-eyebrow text-ink-faint;
-  }
-
-  .hairline {
-    @apply border border-line;
-  }
-
-  /* Thin scrollbars inside code/log panes so they read like a terminal. */
-  .scroll-slim::-webkit-scrollbar {
-    width: 9px;
-    height: 9px;
-  }
-  .scroll-slim::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-ink/15;
-  }
-  .scroll-slim::-webkit-scrollbar-thumb:hover {
-    @apply bg-ink/25;
   }
 }
