@@ -56,11 +56,17 @@ const SANDBOX_USER = "1000:1000";
  * CPU (Docker doesn't hide the host's core count, so Vitest would otherwise
  * spawn a worker per host core), and re-creating a module graph per file made
  * a 913-tool server's suite five times slower. Files run one at a time and
- * every test resets its own `fetch` stub, so sharing the context is safe.
+ * every test resets its own `fetch` stub, so sharing the context is safe. The
+ * worker is a thread, not a child process: with Vitest 5 that ran a
+ * 1,170-tool server's suite in 135 s instead of 206 s.
+ *
+ * Nothing is cached on disk (`--no-cache`, `--no-fsModuleCache`): the project
+ * is mounted read-only and each container runs once. Output is uncoloured so
+ * the summary parser and the repair prompt see plain text.
  */
 const TEST_COMMAND = [
   `if [ -f tsconfig.json ]; then node ${SANDBOX_ROOT}/node_modules/typescript/bin/tsc --noEmit -p tsconfig.json || exit 1; fi`,
-  `exec node ${SANDBOX_ROOT}/node_modules/vitest/vitest.mjs run --no-cache --maxWorkers=1 --minWorkers=1 --no-isolate`,
+  `exec node ${SANDBOX_ROOT}/node_modules/vitest/vitest.mjs run --no-cache --no-fsModuleCache --no-color --pool=threads --maxWorkers=1 --no-isolate`,
 ].join("; ");
 
 /**

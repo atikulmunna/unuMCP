@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { CONTAINER_NAME_PREFIX, runSandbox } from "@unumcp/sandbox";
+import { CONTAINER_NAME_PREFIX, runSandbox, SANDBOX_DEPENDENCIES } from "@unumcp/sandbox";
 import { redactSecrets } from "@unumcp/security-scan";
 
 // Opt-in: these run the REAL Docker sandbox (building its image on first use),
@@ -14,7 +14,7 @@ import { redactSecrets } from "@unumcp/security-scan";
 const RUN = process.env.RUN_SANDBOX_DOCKER_TESTS;
 
 /** A project declaring only dependencies the sandbox image provides. */
-const PACKAGE_JSON = JSON.stringify({ name: "probe", private: true, devDependencies: { vitest: "^2.1.0" } });
+const PACKAGE_JSON = JSON.stringify({ name: "probe", private: true, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } });
 
 async function makeProject(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "unumcp-sbx-sec-"));

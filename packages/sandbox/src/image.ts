@@ -17,7 +17,7 @@ export const SANDBOX_DEPENDENCIES: Readonly<Record<string, string>> = {
   "@types/node": "^22.0.0",
   tsx: "^4.19.0",
   typescript: "^5.6.0",
-  vitest: "^2.1.0",
+  vitest: "^5.0.5",
 };
 
 /** Where the image keeps its dependencies; the project is mounted beneath it. */

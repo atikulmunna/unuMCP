@@ -30,6 +30,14 @@ describe("parseTestSummary", () => {
     expect(parseTestSummary(withSkips)).toEqual({ passed: 10, failed: 0, skipped: 2, total: 12 });
   });
 
+  it("reads a coloured summary the same as a plain one", () => {
+    // Vitest 5's summary line as it appears when colour is on.
+    const coloured =
+      "\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[31m6 failed\u001b[39m\u001b[22m\u001b[2m | \u001b[22m" +
+      "\u001b[1m\u001b[32m19 passed\u001b[39m\u001b[22m\u001b[90m (25)\u001b[39m\n";
+    expect(parseTestSummary(coloured)).toEqual({ passed: 19, failed: 6, skipped: 0, total: 25 });
+  });
+
   it("returns zeros when no summary is present", () => {
     expect(parseTestSummary("npm ERR! something exploded")).toEqual({
       passed: 0,

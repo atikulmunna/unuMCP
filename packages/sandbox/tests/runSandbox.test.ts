@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 
 import { spawn } from "node:child_process";
+import { SANDBOX_DEPENDENCIES } from "../src/image";
 
 interface FakeChild extends EventEmitter {
   stdout: EventEmitter;
@@ -70,7 +71,7 @@ beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), "unumcp-sbx-unit-"));
   await writeFile(
     join(projectDir, "package.json"),
-    JSON.stringify({ dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: "^2.1.0" } }),
+    JSON.stringify({ dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } }),
   );
 });
 

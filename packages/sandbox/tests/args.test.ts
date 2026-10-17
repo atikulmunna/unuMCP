@@ -49,7 +49,7 @@ describe("buildTestArgs", () => {
     expect([image, shell, flag]).toEqual(["unumcp-sandbox:abc", "sh", "-c"]);
     expect(command).toBe(
       "if [ -f tsconfig.json ]; then node /sandbox/node_modules/typescript/bin/tsc --noEmit -p tsconfig.json || exit 1; fi; " +
-        "exec node /sandbox/node_modules/vitest/vitest.mjs run --no-cache --maxWorkers=1 --minWorkers=1 --no-isolate",
+        "exec node /sandbox/node_modules/vitest/vitest.mjs run --no-cache --no-fsModuleCache --no-color --pool=threads --maxWorkers=1 --no-isolate",
     );
     expect(args.join(" ")).not.toMatch(/\bnpm\b/);
   });

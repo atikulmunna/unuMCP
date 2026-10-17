@@ -55,6 +55,14 @@ describe("evaluateRun", () => {
       run("", false, { test: { ok: false, exitCode: 137, log: "", timedOut: false } }),
     );
     expect(killed).toMatchObject({ passed: false, infraFailed: true });
+    // A worker thread at its heap limit: Vitest only reports the worker dying (exit 1).
+    const worker = evaluateRun(
+      run(
+        "Error: Worker exited unexpectedly with exit code 1 during started state while running test file /sandbox/app/tests/oom.test.ts",
+        false,
+      ),
+    );
+    expect(worker).toMatchObject({ passed: false, infraFailed: true });
   });
 
   it("treats a test-phase timeout as infrastructure, even with a passing summary", () => {

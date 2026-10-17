@@ -21,14 +21,14 @@ describe("sandbox image", () => {
 
 describe("missingDependencies", () => {
   it("accepts a project whose dependencies the image provides", () => {
-    const pkg = { dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: "^2.1.0" } };
+    const pkg = { dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } };
     expect(missingDependencies(JSON.stringify(pkg))).toEqual([]);
   });
 
   it("flags extra packages and changed version specs", () => {
     const pkg = {
       dependencies: { zod: "^4.0.0", "left-pad": "1.0.0" },
-      devDependencies: { vitest: "^2.1.0" },
+      devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest },
     };
     expect(missingDependencies(JSON.stringify(pkg))).toEqual(["zod@^4.0.0", "left-pad@1.0.0"]);
   });
