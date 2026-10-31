@@ -1,3 +1,4 @@
+import { extractJsonObject, SECRET_SHAPE } from "./output";
 import type { LlmClient, LlmUsage } from "./types";
 
 export interface ToolProposalInput {
@@ -35,8 +36,6 @@ export interface BatchToolProposal {
   latencyMs: number;
 }
 
-// Obvious credential shapes that must never appear in a generated description.
-const SECRET_SHAPE = /\b(?:sk-[a-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{12,}|AIza[0-9A-Za-z_-]{20,})\b/;
 
 const BATCH_SYSTEM_PROMPT = [
   "You write concise, accurate descriptions for MCP server tools that each wrap one HTTP API endpoint.",
@@ -161,18 +160,6 @@ export function parseBatchDescriptions(text: string): Map<string, string> {
     }
   }
   return map;
-}
-
-/** Pull the first {...} block, stripping ```json fences if present. */
-function extractJsonObject(text: string): string {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = (fenced?.[1] ?? text).trim();
-  const start = candidate.indexOf("{");
-  const end = candidate.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error(`No JSON object found in LLM output: ${text.slice(0, 200)}`);
-  }
-  return candidate.slice(start, end + 1);
 }
 
 function sanitizeDescription(description: string): string {
