@@ -27,6 +27,7 @@ upload spec ─► validate + dereference ─► extract endpoints ─► propos
 | Extract | `packages/openapi` (`extract.ts`) | One record per operation: parameters, request body (JSON, `+json`, or form; anything else reported), auth, deprecation |
 | Propose | `packages/analysis` | Deterministic name (from `operationId`), risk level (method, sensitive nouns, and action words such as `merge` or `transfer`), input schema; high-risk, deprecated, and unsendable endpoints start disabled |
 | Describe | `packages/llm`, `apps/api/src/tools` | Optional LLM-written descriptions, batched; spec text is treated as data; the LLM's risk rating can raise a tool's risk (audited), never lower it |
+| Check (optional) | `packages/usability`, `apps/api/src/usability` | An LLM agent attempts a task per tool; fixes for its misses are offered only if re-scoring proves them, and a person accepts each |
 | Approve | `apps/api/src/tools` | A person chooses the final tool set; names stay unique |
 | Generate | `packages/codegen`, `packages/schema-gen` | A complete TypeScript MCP server, byte-identical for the same inputs, with behavior hints on each tool and a runtime safety policy |
 | Scan | `packages/security-scan` | Refuses secrets, foreign hosts in code, eval or shell use, disallowed dependencies |
@@ -40,11 +41,12 @@ upload spec ─► validate + dereference ─► extract endpoints ─► propos
 packages/        pure, IO-free domain logic (unit-tested without a database or Docker)
   openapi/         parse, validate, dereference, extract, detect auth
   analysis/        classify endpoints, score risk, name tools, assemble input schemas
+  usability/       look-alike selection, target picking, answer scoring for the agent check
   schema-gen/      JSON Schema to Zod source
   codegen/         the generated server's files
   security-scan/   static scan, secret redaction, prompt-injection flags
   sandbox/         sandbox image definition, container arguments, test verdict
-  llm/             Claude client (Anthropic SDK) and the description/repair prompts
+  llm/             Claude client (Anthropic SDK) and the description, repair, and usability prompts
   db/              Prisma schema and client
 apps/
   api/             NestJS shell: HTTP, auth, persistence, jobs, orchestration
@@ -81,6 +83,20 @@ means GET or HEAD only: a POST that merely searches is still treated as a
 write, because a wrong "read-only" would skip the other guards. A setting the
 server can't parse, or a tool list naming a tool that doesn't exist, stops it
 at startup, so a typo can't switch a guard off.
+
+**Tool text is tested on an agent, not just written.** The usability check
+(on demand, while the plan is under review) has the LLM play an agent. For up
+to 40 tools, ranked by how close their nearest look-alike is, it writes a
+realistic request, then asks the agent to pick a tool among the target and its
+11 closest look-alikes (resource words weighted double, then name and
+description words) and fill the arguments. Answers are graded without running
+anything: the right tool, arguments valid against the input schema, and the
+values the request stated. For the misses it proposes clearer descriptions;
+one is offered only if re-scoring turns a miss into a hit without breaking a
+hit elsewhere (a broken hit is blamed on the changed tool the agent picked
+instead), with at most two re-score passes and a hard ceiling on LLM calls.
+Accepting a fix goes through the normal tool update, and a fix whose tool was
+edited since the check is marked stale rather than applied.
 
 **A sandbox with no install step.** Every generated server declares the same
 dependency set, so those dependencies are baked into a prebuilt image tagged by
@@ -127,7 +143,7 @@ Either way, a boot-time reconciler settles anything a crash stranded.
 | Untrusted input | Contained by |
 | --- | --- |
 | The uploaded spec (names, descriptions, URLs, schemas) | Size limits; every spec-derived string reaches generated code only through `JSON.stringify`; names sanitized to snake_case; descriptions flagged for prompt-injection patterns and given to the LLM as data |
-| LLM output (descriptions, risk ratings, repair edits) | Descriptions checked for secret-shaped text; a risk rating can only raise risk; repair edits limited to an allowlist of files, parsed strictly, security-scanned, and kept only if tests pass |
+| LLM output (descriptions, risk ratings, repair edits, usability fixes) | Descriptions and usability fixes checked for secret-shaped text (fixes also for prompt-injection patterns, and a fix needs a person to accept it); a risk rating can only raise risk; repair edits limited to an allowlist of files, parsed strictly, security-scanned, and kept only if tests pass |
 | The agent driving a generated server | Risky calls need the user's approval through MCP elicitation; read-only mode, allow and deny lists, and dry runs set by whoever runs the server |
 | Generated code at test time | The locked-down, offline sandbox container, with a timeout that removes the container itself |
 | API clients | JWT auth (the API refuses to start without a strong secret), per-project ownership checks returning 404, per-client rate limits behind the trusted local proxy, one sanitized error envelope |

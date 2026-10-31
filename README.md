@@ -50,6 +50,7 @@ Upload OpenAPI spec
   → analyse endpoints → propose tools (deterministic name + risk + input schema;
                                        optional LLM-authored descriptions, and an
                                        LLM risk rating that can only raise risk)
+  → optional: agent usability check  (an LLM agent tries each tool; fixes to review)
   → 👤 human approval  (high-risk tools disabled by default)
   → generate TypeScript MCP server  (deterministic codegen, with a runtime
                                      safety policy: approval, dry run, read-only)
@@ -64,6 +65,7 @@ Design principles worth knowing before you read the code:
 - **Determinism first.** All *structural* artifacts (project scaffold, handler wiring, env detection, tests) are generated deterministically. The LLM is used **only** for prose (tool descriptions) and for repair edits, never to produce structural code. The platform runs end-to-end with the LLM disabled (you just get fallback descriptions and no repair).
 - **The LLM is Claude, and opt-in.** `@unumcp/llm` wraps Anthropic's official SDK (default Claude Haiku 4.5) behind a small `LlmClient` interface, so tests drive every LLM stage with a scripted client. It bills per token, so it runs only when explicitly turned on. Descriptions are proposed in **batches** (many tools per call) to keep the token cost of a large spec down. See [Environment variables](#environment-variables).
 - **Generated tests check the contract, not just that code runs.** Each tool is called through a real MCP client (in-memory transport) with the API stubbed, and its test asserts the exact HTTP request the spec defines: method, path, query (OpenAPI's default serialization), headers, auth, and body encoding. It also checks that the response reaches the agent unchanged, that API errors become tool errors, and that calls missing required inputs are rejected. The sandbox typechecks the server before running them. Injected bugs (wrong path, a dropped header or auth, a misencoded body, swallowed errors) all fail.
+- **Tools are tested on an agent before you approve them.** An on-demand check has an LLM play the agent: for up to 40 tools, most easily confused first, it gets a realistic request written from the spec and must pick the right tool, among the target and its closest look-alikes, with the right arguments. For each miss it proposes clearer tool text, which is offered only if re-scoring shows it turns the miss into a hit without breaking another tool. You accept or reject each fix, and see the score before and after (for example 33 of 40, then 38 of 40) with the check's cost. Nothing generated is executed: the model only sees tool metadata. It needs the LLM and costs about $0.30 on Claude Haiku 4.5.
 - **Risk is enforced at runtime, not just shown at approval.** Risk comes from rules (method, sensitive nouns, and action words a method hides, such as `merge` or `transfer`); the LLM may rate a tool riskier, never safer, and a raise is audited. Every generated server carries the result: MCP behavior hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on each tool, and a policy set by environment variables (`MCP_READ_ONLY`, `MCP_ENABLED_TOOLS`, `MCP_DISABLED_TOOLS`, `MCP_DRY_RUN`, `MCP_CONFIRM_RISK`). By default a high or critical tool runs only after the user approves the exact request through MCP elicitation; a client that can't ask gets a refusal, not a silent call. The generated tests prove each path (approve, decline, no elicitation support, dry run, read-only filtering), and removing any guard fails them.
 - **Tests are frozen during repair.** The repair loop may edit `src/**/*.ts` only: tests, `package.json`, and `tsconfig.json` are never offered to the model, and the parser rejects any other path. Every repair passes the same security scan as generated code before it is applied, and a run only counts as passing when at least one test reports a pass, so an edit can't win by making the suite run nothing.
 - **Every internal LLM call is traced.** Each agent tool call (`propose_tool_descriptions_batch`, `repair_code`) is recorded as an audit event with token counts, and its cost rolls up into per-run and platform metrics, with secrets redacted throughout.
@@ -89,11 +91,12 @@ apps/
 packages/
   openapi/        Parse/validate OpenAPI, dereference $ref/allOf/oneOf, extract endpoints, detect auth
   analysis/       Endpoint → tool classification, deterministic naming, risk scoring, proposal assembly
+  usability/      Agent usability check logic: look-alike selection, target picking, answer scoring
   schema-gen/     JSON Schema → Zod input-schema generation
   codegen/        Deterministic TypeScript MCP server generation (project, handlers, tests, README, .env.example)
   sandbox/        Docker sandbox: prebuilt dependency image, locked-down test runner, Vitest summary parser
   security-scan/  Secret redaction, static scan of generated code, prompt-injection detection
-  llm/            Claude client (Anthropic SDK): batched tool-description proposal + code repair
+  llm/            Claude client (Anthropic SDK): tool descriptions, code repair, usability prompts
   db/             Prisma schema + generated client
 ```
 
@@ -149,6 +152,9 @@ The API loads `apps/api/.env` (via Node's `--env-file`). Copy `.env.example` and
 | `LLM_DISABLED` | no | (none) | Set `true` to force-disable the LLM even when configured |
 | `PROPOSAL_BATCH_SIZE` | no | `5` | Tools described per LLM call (batched proposal, P2-6) |
 | `PROPOSAL_CONCURRENCY` | no | `3` | Description batches in flight at once |
+| `USABILITY_MAX_TASKS` | no | `40` | Tasks per agent usability check (one per tested tool) |
+| `USABILITY_CONCURRENCY` | no | `2` | Agent calls in flight during a check |
+| `USABILITY_MAX_CALLS` | no | `150` | Hard ceiling on LLM calls per check; the run fails beyond it |
 | `REDIS_URL` | no | (none) | **Absent ⇒ jobs run inline.** Set to enable the durable BullMQ queue |
 | `JOBS_INLINE` | no | (none) | Set `true` to force inline execution even with `REDIS_URL` |
 | `JOB_ATTEMPTS` | no | `3` | BullMQ retry attempts per job |
