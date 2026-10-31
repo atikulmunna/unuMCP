@@ -28,7 +28,7 @@ export function packageJsonFile(o: NormalizedOptions): GeneratedFile {
     devDependencies: {
       "@types/node": "^22.0.0",
       tsx: "^4.19.0",
-      typescript: "^5.6.0",
+      typescript: "^6.0.3",
       vitest: "^5.0.5",
     },
   };
@@ -47,6 +47,8 @@ export function tsconfigFile(): GeneratedFile {
       esModuleInterop: true,
       skipLibCheck: true,
       declaration: false,
+      // TypeScript 6 no longer loads @types packages on its own; the server runs on Node.
+      types: ["node"],
     },
     include: ["src"],
   };

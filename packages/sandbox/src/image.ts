@@ -16,7 +16,7 @@ export const SANDBOX_DEPENDENCIES: Readonly<Record<string, string>> = {
   zod: "^3.25.0",
   "@types/node": "^22.0.0",
   tsx: "^4.19.0",
-  typescript: "^5.6.0",
+  typescript: "^6.0.3",
   vitest: "^5.0.5",
 };
 
