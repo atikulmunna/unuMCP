@@ -102,7 +102,7 @@ describe("generateProject: structure", () => {
   it("pins the MCP SDK and zod in package.json", () => {
     const pkg = JSON.parse(fileMap(options).get("package.json")!);
     expect(pkg.dependencies["@modelcontextprotocol/sdk"]).toBe("1.32.1");
-    expect(pkg.dependencies.zod).toBe("^3.25.0");
+    expect(pkg.dependencies.zod).toBe("^4.6.7");
     expect(pkg.type).toBe("module");
   });
 });

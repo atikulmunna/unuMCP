@@ -21,7 +21,7 @@ describe("sandbox image", () => {
 
 describe("missingDependencies", () => {
   it("accepts a project whose dependencies the image provides", () => {
-    const pkg = { dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } };
+    const pkg = { dependencies: { zod: SANDBOX_DEPENDENCIES.zod }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } };
     expect(missingDependencies(JSON.stringify(pkg))).toEqual([]);
   });
 

@@ -6,7 +6,7 @@ import { harnessFile, serverTestFile, testFile } from "./test-files";
 
 /** The MCP SDK every generated server pins (the sandbox image bakes in the same one). */
 export const MCP_SDK_VERSION = "1.32.1";
-const DEFAULT_ZOD_VERSION = "^3.25.0";
+const DEFAULT_ZOD_VERSION = "^4.6.7";
 
 /**
  * Deterministically generate a complete TypeScript MCP server project from a

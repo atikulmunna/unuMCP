@@ -71,7 +71,7 @@ beforeEach(async () => {
   projectDir = await mkdtemp(join(tmpdir(), "unumcp-sbx-unit-"));
   await writeFile(
     join(projectDir, "package.json"),
-    JSON.stringify({ dependencies: { zod: "^3.25.0" }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } }),
+    JSON.stringify({ dependencies: { zod: SANDBOX_DEPENDENCIES.zod }, devDependencies: { vitest: SANDBOX_DEPENDENCIES.vitest } }),
   );
 });
 

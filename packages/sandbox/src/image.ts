@@ -13,7 +13,7 @@ import { join } from "node:path";
  */
 export const SANDBOX_DEPENDENCIES: Readonly<Record<string, string>> = {
   "@modelcontextprotocol/sdk": "1.32.1",
-  zod: "^3.25.0",
+  zod: "^4.6.7",
   "@types/node": "^22.0.0",
   tsx: "^4.19.0",
   typescript: "^6.0.3",

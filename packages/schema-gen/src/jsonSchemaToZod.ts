@@ -133,14 +133,14 @@ function convertObject(
     } else if (value.startsWith("z.unknown()")) {
       // `unknown` accepts undefined, so a required one would read (and be
       // published to the agent) as optional; demand a value.
-      value += '.refine((value) => value !== undefined, { message: "Required" })';
+      value += '.refine((value) => value !== undefined, { error: "Required" })';
     }
     return `  ${JSON.stringify(key)}: ${value}`;
   });
 
-  let out = `z.object({\n${lines.join(",\n")}\n})`;
-  if (schema.additionalProperties === true) out += ".passthrough()";
-  return out;
+  // A loose object keeps the keys it doesn't declare instead of stripping them.
+  const factory = schema.additionalProperties === true ? "z.looseObject" : "z.object";
+  return `${factory}({\n${lines.join(",\n")}\n})`;
 }
 
 function convertArray(

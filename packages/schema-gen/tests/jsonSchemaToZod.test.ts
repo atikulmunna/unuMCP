@@ -70,6 +70,13 @@ describe("jsonSchemaToZod: objects", () => {
     expect(schema.safeParse({ a: 1, b: 2 }).success).toBe(true);
     expect(schema.safeParse({ a: "x" }).success).toBe(false);
   });
+
+  it("additionalProperties: true keeps undeclared keys; otherwise they are stripped", () => {
+    const loose = build(gen({ ...userSchema, additionalProperties: true } as JsonSchema));
+    expect(loose.parse({ id: "x", extra: 1 })).toEqual({ id: "x", extra: 1 });
+    expect(loose.safeParse({ id: 7 }).success).toBe(false); // declared fields still checked
+    expect(build(gen(userSchema)).parse({ id: "x", extra: 1 })).toEqual({ id: "x" });
+  });
 });
 
 describe("jsonSchemaToZod: composition (OD-1)", () => {
