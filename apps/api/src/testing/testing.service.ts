@@ -4,12 +4,12 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { evaluateRun, truncateLog, type SandboxResult } from "@unumcp/sandbox";
 import { redactSecrets } from "@unumcp/security-scan";
-import { ProjectStatus, TestStatus, type GenerationStatus } from "@unumcp/db";
+import { ProjectStatus } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { SANDBOX_RUNNER, type SandboxRunner } from "./sandbox-runner";
 import { LogBus } from "./log-bus";
-import { TEST_SUITE } from "./test-results";
+import { statusesFor, TEST_SUITE } from "./test-results";
 
 @Injectable()
 export class TestingService {
@@ -111,32 +111,13 @@ export class TestingService {
     result: SandboxResult,
     durationMs: number,
   ) {
-    const installFailed = !result.install.ok;
     // A pass needs at least one reported passing test, not just a clean exit.
     const { summary, passed, infraFailed } = evaluateRun(result);
-
-    // A sandbox/install failure or timeout is an infrastructure error, distinct
-    // from a clean test failure (which feeds the repair loop in P4-5).
-    let status: TestStatus;
-    let projectStatus: ProjectStatus;
-    let runStatus: GenerationStatus;
-    if (infraFailed) {
-      status = TestStatus.errored;
-      projectStatus = ProjectStatus.SANDBOX_FAILED;
-      runStatus = "failed";
-    } else if (passed) {
-      status = TestStatus.passed;
-      projectStatus = ProjectStatus.TESTS_PASSED;
-      runStatus = "passed";
-    } else {
-      status = TestStatus.failed;
-      projectStatus = ProjectStatus.TESTS_FAILED;
-      runStatus = "failed";
-    }
+    const { test: status, project, run } = statusesFor({ passed, infraFailed });
 
     // Redact any secret that leaked into sandbox output before it is persisted
     // or shown in the UI (NFR-001). Redact first, then cap the length.
-    const logExcerpt = truncateLog(redactSecrets(installFailed ? result.install.log : result.test.log));
+    const logExcerpt = truncateLog(redactSecrets(result.install.ok ? result.test.log : result.install.log));
 
     await this.prisma.$transaction([
       this.prisma.testResult.create({
@@ -152,9 +133,9 @@ export class TestingService {
       }),
       this.prisma.generationRun.update({
         where: { id: runId },
-        data: { status: runStatus, completedAt: new Date() },
+        data: { status: run, completedAt: new Date() },
       }),
-      this.prisma.project.update({ where: { id: projectId }, data: { status: projectStatus } }),
+      this.prisma.project.update({ where: { id: projectId }, data: { status: project } }),
       this.prisma.auditEvent.create({
         data: {
           projectId,

@@ -6,6 +6,9 @@ import {
   parseSpec,
   toCycleSafe,
   validateSpec,
+  type DetectedAuth,
+  type ExtractedEndpoint,
+  type SpecValidation,
 } from "@unumcp/openapi";
 import { Prisma } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
@@ -24,7 +27,24 @@ export class SpecsService {
       `${projectId}/${Date.now()}-${filename}`,
       content,
     );
+    const { doc, validation } = await this.parseAndValidate(projectId, originalFileUrl, content);
 
+    const deref = await dereferenceSpec(doc);
+    const endpoints = extractEndpoints(deref);
+    const auth = detectAuth(deref);
+    const spec = await this.saveValidSpec(projectId, originalFileUrl, doc, validation, endpoints, auth);
+
+    return {
+      specId: spec.id,
+      title: validation.title,
+      openapiVersion: validation.openapiVersion,
+      endpointCount: endpoints.length,
+      auth,
+    };
+  }
+
+  /** Parse and validate the upload; a spec that fails either is recorded as invalid and refused. */
+  private async parseAndValidate(projectId: string, originalFileUrl: string, content: string) {
     const parsed = parseSpec(content);
     if (!parsed.ok || !parsed.doc) {
       await this.recordInvalid(projectId, originalFileUrl, null, [parsed.error ?? "Parse failed"]);
@@ -39,17 +59,24 @@ export class SpecsService {
         errors: validation.errors,
       });
     }
+    return { doc: parsed.doc, validation };
+  }
 
-    const deref = await dereferenceSpec(parsed.doc);
-    const endpoints = extractEndpoints(deref);
-    const auth = detectAuth(deref);
-
-    const spec = await this.prisma.$transaction(async (tx) => {
+  /** Store a valid spec with its endpoints (replacing the previous ones) and advance the project. */
+  private saveValidSpec(
+    projectId: string,
+    originalFileUrl: string,
+    doc: Record<string, unknown>,
+    validation: SpecValidation,
+    endpoints: ExtractedEndpoint[],
+    auth: DetectedAuth,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
       const created = await tx.apiSpec.create({
         data: {
           projectId,
           originalFileUrl,
-          parsedJson: parsed.doc as unknown as Prisma.InputJsonValue,
+          parsedJson: doc as unknown as Prisma.InputJsonValue,
           openapiVersion: validation.openapiVersion ?? null,
           title: validation.title ?? null,
           version: validation.version ?? null,
@@ -61,25 +88,7 @@ export class SpecsService {
 
       await tx.endpoint.deleteMany({ where: { projectId } });
       if (endpoints.length > 0) {
-        await tx.endpoint.createMany({
-          data: endpoints.map((e) => ({
-            projectId,
-            method: e.method,
-            path: e.path,
-            operationId: e.operationId ?? null,
-            summary: e.summary ?? null,
-            description: e.description ?? null,
-            tag: e.tags[0] ?? null,
-            requestSchema: e.requestSchema
-              ? (toCycleSafe(e.requestSchema) as unknown as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
-            responseSchema: e.responseSchema
-              ? (toCycleSafe(e.responseSchema) as unknown as Prisma.InputJsonValue)
-              : Prisma.JsonNull,
-            authRequired: e.authRequired,
-            deprecated: e.deprecated,
-          })),
-        });
+        await tx.endpoint.createMany({ data: endpoints.map((e) => toEndpointRow(projectId, e)) });
       }
 
       await tx.project.update({
@@ -88,14 +97,6 @@ export class SpecsService {
       });
       return created;
     });
-
-    return {
-      specId: spec.id,
-      title: validation.title,
-      openapiVersion: validation.openapiVersion,
-      endpointCount: endpoints.length,
-      auth,
-    };
   }
 
   getLatestSpec(projectId: string) {
@@ -134,4 +135,23 @@ export class SpecsService {
       }),
     ]);
   }
+}
+
+/** One extracted endpoint as an `Endpoint` row; schemas are stored cycle-safe. */
+function toEndpointRow(projectId: string, e: ExtractedEndpoint) {
+  const json = (schema: unknown) =>
+    schema ? (toCycleSafe(schema) as unknown as Prisma.InputJsonValue) : Prisma.JsonNull;
+  return {
+    projectId,
+    method: e.method,
+    path: e.path,
+    operationId: e.operationId ?? null,
+    summary: e.summary ?? null,
+    description: e.description ?? null,
+    tag: e.tags[0] ?? null,
+    requestSchema: json(e.requestSchema),
+    responseSchema: json(e.responseSchema),
+    authRequired: e.authRequired,
+    deprecated: e.deprecated,
+  };
 }

@@ -13,14 +13,13 @@ import {
   TestStatus,
   type GeneratedArtifact,
   type GenerationRun,
-  type GenerationStatus,
 } from "@unumcp/db";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { LlmService } from "../llm/llm.service";
 import { estimateCostUsd } from "../llm/llm-pricing";
 import { SANDBOX_RUNNER, type SandboxRunner } from "../testing/sandbox-runner";
-import { REPAIR_SUITE } from "../testing/test-results";
+import { REPAIR_SUITE, statusesFor } from "../testing/test-results";
 import { DEFAULT_BASE_URL, scanForPackaging } from "../generation/security-gate";
 import { repairConfigFromEnv, type RepairConfig } from "./repair.config";
 
@@ -378,17 +377,7 @@ export class RepairService {
     passed: boolean,
     infraFailed: boolean,
   ): Promise<void> {
-    const status = infraFailed
-      ? TestStatus.errored
-      : passed
-        ? TestStatus.passed
-        : TestStatus.failed;
-    const projectStatus = infraFailed
-      ? ProjectStatus.SANDBOX_FAILED
-      : passed
-        ? ProjectStatus.TESTS_PASSED
-        : ProjectStatus.TESTS_FAILED;
-    const runStatus: GenerationStatus = passed ? "passed" : "failed";
+    const { test: status, project: projectStatus, run: runStatus } = statusesFor({ passed, infraFailed });
 
     await this.prisma.$transaction([
       this.prisma.testResult.create({
