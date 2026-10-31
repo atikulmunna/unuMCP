@@ -40,6 +40,11 @@ export class UsabilityService {
     private readonly config: UsabilityConfig,
   ) {}
 
+  /** Whether a check can run at all: it needs the LLM. */
+  get llmEnabled(): boolean {
+    return this.llm.enabled;
+  }
+
   /** Refuse a check that can't or mustn't start; called before running or enqueueing one. */
   async assertCanStart(projectId: string): Promise<void> {
     if (!this.llm.enabled) {

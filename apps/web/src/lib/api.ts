@@ -13,6 +13,8 @@ import type {
   SessionUser,
   TestResult,
   ToolCandidate,
+  UsabilityFix,
+  UsabilityState,
 } from "./types";
 
 const TOKEN_KEY = "unumcp.token";
@@ -158,6 +160,15 @@ export const api = {
       }),
     approve: (projectId: string) =>
       request<{ approvedCount: number }>(`/projects/${projectId}/tools/approve`, { method: "POST" }),
+  },
+
+  usability: {
+    get: (projectId: string) => request<UsabilityState>(`/projects/${projectId}/usability`),
+    start: (projectId: string) => request<unknown>(`/projects/${projectId}/usability`, { method: "POST" }),
+    accept: (projectId: string, fixId: string) =>
+      request<UsabilityFix>(`/projects/${projectId}/usability/fixes/${fixId}/accept`, { method: "POST" }),
+    reject: (projectId: string, fixId: string) =>
+      request<UsabilityFix>(`/projects/${projectId}/usability/fixes/${fixId}/reject`, { method: "POST" }),
   },
 
   generation: {

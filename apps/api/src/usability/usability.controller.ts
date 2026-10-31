@@ -25,9 +25,10 @@ export class UsabilityController {
     return this.jobs.enqueueUsability(projectId);
   }
 
+  /** The latest check, and whether a check can run at all (the dashboard greys it out). */
   @Get()
-  latest(@Param("projectId") projectId: string) {
-    return this.usability.latest(projectId);
+  async latest(@Param("projectId") projectId: string) {
+    return { llmEnabled: this.usability.llmEnabled, run: await this.usability.latest(projectId) };
   }
 
   @Post("fixes/:fixId/accept")

@@ -258,9 +258,10 @@ describe("usability endpoints", () => {
 
     const latest = await request(server()).get(`/projects/${projectId}/usability`).set(auth);
     expect(latest.status).toBe(200);
-    expect(latest.body).toMatchObject({ id: started.body.runId, status: "completed" });
-    expect(latest.body.tasks).toHaveLength(4);
-    expect(latest.body.fixes).toHaveLength(1);
+    expect(latest.body.llmEnabled).toBe(true);
+    expect(latest.body.run).toMatchObject({ id: started.body.runId, status: "completed" });
+    expect(latest.body.run.tasks).toHaveLength(4);
+    expect(latest.body.run.fixes).toHaveLength(1);
   });
 
   it("refuses a check without the LLM, with fewer than two tools, while one runs, or after approval", async () => {

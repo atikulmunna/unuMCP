@@ -6,6 +6,7 @@ import { primaryAction, riskTone } from "@/lib/status";
 import { cx, pluralize } from "@/lib/format";
 import type { ToolCandidate } from "@/lib/types";
 import { useAction, type StageProps } from "./shared";
+import { UsabilityPanel } from "./UsabilityPanel";
 
 export function ToolsCard({
   project,
@@ -95,6 +96,8 @@ export function ToolsCard({
           </li>
         ))}
       </ul>
+
+      <UsabilityPanel project={project} reload={reload} />
 
       {!locked && (
         <div className="flex items-center justify-between gap-4 border-t border-line px-5 py-4">

@@ -87,6 +87,49 @@ export interface ToolCandidate {
   endpoints: ToolEndpointRef[];
 }
 
+export type UsabilityOutcome = "correct" | "wrong_tool" | "bad_args" | "no_answer";
+
+export interface UsabilityTask {
+  id: string;
+  toolName: string;
+  prompt: string;
+  chosenTool: string | null;
+  outcome: UsabilityOutcome;
+  reason: string | null;
+}
+
+export interface UsabilityFix {
+  id: string;
+  toolName: string;
+  beforeName: string;
+  afterName: string | null;
+  beforeDescription: string;
+  afterDescription: string;
+  missesFixed: number;
+  status: "proposed" | "accepted" | "rejected" | "stale";
+}
+
+export interface UsabilityRun {
+  id: string;
+  status: "running" | "completed" | "failed";
+  errorMessage: string | null;
+  note: string | null;
+  taskCount: number;
+  answeredCount: number;
+  baselineCorrect: number;
+  fixedCorrect: number | null;
+  /** Prisma Decimal, serialized as a string. */
+  estimatedCostUsd: string | number;
+  tasks: UsabilityTask[];
+  fixes: UsabilityFix[];
+}
+
+export interface UsabilityState {
+  /** False when no LLM is configured: the check can't run. */
+  llmEnabled: boolean;
+  run: UsabilityRun | null;
+}
+
 export type ArtifactType = "source_file" | "test_file" | "archive" | "readme";
 
 export interface GenerationArtifact {
