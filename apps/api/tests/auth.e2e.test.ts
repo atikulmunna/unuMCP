@@ -45,6 +45,17 @@ describe("auth (P1-4)", () => {
       .post("/auth/register")
       .send({ email: uniqueEmail("weak"), password: "short" });
     expect(res.status).toBe(400);
+    // The Zod details reach the client per field.
+    expect(Object.keys(res.body.errors.fieldErrors)).toEqual(["password"]);
+    expect(res.body.errors.formErrors).toEqual([]);
+  });
+
+  it("rejects a malformed email", async () => {
+    const res = await request(app.getHttpServer())
+      .post("/auth/register")
+      .send({ email: "not-an-email", password: "password123" });
+    expect(res.status).toBe(400);
+    expect(Object.keys(res.body.errors.fieldErrors)).toEqual(["email"]);
   });
 
   it("rejects duplicate registration", async () => {

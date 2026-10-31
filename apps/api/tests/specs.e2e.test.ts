@@ -208,6 +208,9 @@ describe("spec upload pipeline (P1-7/8/9)", () => {
       .set({ Authorization: `Bearer ${token}` })
       .send({ filename: "spec.txt", content: validSpec });
     expect(res.status).toBe(400);
+    expect(res.body.errors.fieldErrors.filename).toEqual([
+      "Only .json, .yaml, and .yml files are supported.",
+    ]);
   });
 
   it("enforces ownership on spec routes (404 for non-owner)", async () => {
