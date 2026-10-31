@@ -67,6 +67,8 @@ Requires=docker.service
 WorkingDirectory=$APP/apps/api
 ExecStart=/usr/local/bin/node --env-file=.env -r @swc-node/register src/main.ts
 Environment=NODE_ENV=production
+# systemd sets no HOME for root services; SWC needs one to cache its native addon.
+Environment=HOME=/root
 Restart=always
 RestartSec=5
 [Install]
