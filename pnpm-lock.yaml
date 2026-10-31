@@ -79,6 +79,9 @@ importers:
       '@unumcp/security-scan':
         specifier: workspace:*
         version: link:../../packages/security-scan
+      '@unumcp/usability':
+        specifier: workspace:*
+        version: link:../../packages/usability
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3

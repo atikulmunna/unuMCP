@@ -64,6 +64,22 @@ describe("job recovery + idempotency (P6-6, NFR-006)", () => {
     expect(project.status).toBe("GENERATION_FAILED");
   });
 
+  it("fails a usability check stranded by a restart, leaving a recent one alone", async () => {
+    const projectId = await seedProject("orphan-usability");
+    const stale = await prisma.usabilityRun.create({
+      data: { projectId, startedAt: new Date(Date.now() - 10 * 60 * 1000) },
+    });
+    const live = await prisma.usabilityRun.create({ data: { projectId } });
+
+    await reconciler.reconcileUsability();
+
+    const after = await prisma.usabilityRun.findUniqueOrThrow({ where: { id: stale.id } });
+    expect(after.status).toBe("failed");
+    expect(after.completedAt).not.toBeNull();
+    expect(after.errorMessage).toMatch(/interrupted by a restart/i);
+    expect((await prisma.usabilityRun.findUniqueOrThrow({ where: { id: live.id } })).status).toBe("running");
+  });
+
   it("recovers projects stranded mid-test or mid-repair, leaving recent ones alone", async () => {
     const stale = new Date(Date.now() - 20 * 60 * 1000);
     const testing = await seedProject("stranded-test");

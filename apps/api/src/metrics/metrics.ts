@@ -17,6 +17,9 @@ export interface RunRow {
   estimatedCostUsd: number | null;
 }
 
+/** LLM spend of an agent usability check (it is not a generation run). */
+export type CostRow = Pick<RunRow, "inputTokens" | "outputTokens" | "estimatedCostUsd">;
+
 export interface TestRow {
   status: TestStatus;
 }
@@ -29,6 +32,8 @@ export interface MetricsInput {
   tests: TestRow[];
   /** Count of `security_scan_failed` audit events (§25.2 "security warnings"). */
   securityWarnings: number;
+  /** Agent usability checks; they add to the LLM cost totals. */
+  usabilityRuns?: CostRow[];
 }
 
 export interface PlatformMetrics {
@@ -76,10 +81,11 @@ export function computeMetrics(input: MetricsInput): PlatformMetrics {
 
   const repairAttemptsTotal = runs.reduce((sum, r) => sum + r.repairAttempts, 0);
 
-  const totalInputTokens = runs.reduce((sum, r) => sum + (r.inputTokens ?? 0), 0);
-  const totalOutputTokens = runs.reduce((sum, r) => sum + (r.outputTokens ?? 0), 0);
+  const spenders: CostRow[] = [...runs, ...(input.usabilityRuns ?? [])];
+  const totalInputTokens = spenders.reduce((sum, r) => sum + (r.inputTokens ?? 0), 0);
+  const totalOutputTokens = spenders.reduce((sum, r) => sum + (r.outputTokens ?? 0), 0);
   const totalEstimatedCostUsd =
-    Math.round(runs.reduce((sum, r) => sum + (r.estimatedCostUsd ?? 0), 0) * 10000) / 10000;
+    Math.round(spenders.reduce((sum, r) => sum + (r.estimatedCostUsd ?? 0), 0) * 10000) / 10000;
 
   return {
     projectsCreated: input.projectsCreated,

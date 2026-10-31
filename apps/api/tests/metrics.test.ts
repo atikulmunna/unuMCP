@@ -106,4 +106,16 @@ describe("computeMetrics (P6-7, §25)", () => {
     expect(m.cost.totalOutputTokens).toBe(1200);
     expect(m.cost.totalEstimatedCostUsd).toBe(0.4656);
   });
+
+  it("adds the cost of agent usability checks to the totals", () => {
+    const m = computeMetrics({
+      projectsCreated: 1,
+      specsParsed: 1,
+      runs: [run({ inputTokens: 1000, outputTokens: 500, estimatedCostUsd: 0.12 })],
+      usabilityRuns: [{ inputTokens: 4000, outputTokens: 800, estimatedCostUsd: 0.008 }],
+      tests: [],
+      securityWarnings: 0,
+    });
+    expect(m.cost).toEqual({ totalInputTokens: 5000, totalOutputTokens: 1300, totalEstimatedCostUsd: 0.128 });
+  });
 });

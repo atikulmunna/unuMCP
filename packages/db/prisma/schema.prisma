@@ -85,6 +85,26 @@ enum RepairOutcome {
   no_change
 }
 
+enum UsabilityStatus {
+  running
+  completed
+  failed
+}
+
+enum UsabilityOutcome {
+  correct
+  wrong_tool
+  bad_args
+  no_answer
+}
+
+enum UsabilityFixStatus {
+  proposed
+  accepted
+  rejected
+  stale
+}
+
 enum TestStatus {
   passed
   failed
@@ -104,21 +124,22 @@ model User {
 }
 
 model Project {
-  id          String              @id @default(cuid())
-  userId      String
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  status      ProjectStatus       @default(DRAFT)
-  sourceType  String              @default("openapi_upload")
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  specs       ApiSpec[]
-  endpoints   Endpoint[]
-  tools       ToolCandidate[]
-  artifacts   GeneratedArtifact[]
-  runs        GenerationRun[]
-  auditEvents AuditEvent[]
+  id            String              @id @default(cuid())
+  userId        String
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  status        ProjectStatus       @default(DRAFT)
+  sourceType    String              @default("openapi_upload")
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  specs         ApiSpec[]
+  endpoints     Endpoint[]
+  tools         ToolCandidate[]
+  artifacts     GeneratedArtifact[]
+  runs          GenerationRun[]
+  auditEvents   AuditEvent[]
+  usabilityRuns UsabilityRun[]
 
   @@index([userId])
 }
@@ -164,23 +185,25 @@ model Endpoint {
 }
 
 model ToolCandidate {
-  id               String         @id @default(cuid())
+  id               String          @id @default(cuid())
   projectId        String
-  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name             String
   description      String
   inputSchema      Json
   outputSchema     Json?
-  enabled          Boolean        @default(true)
-  approved         Boolean        @default(false)
+  enabled          Boolean         @default(true)
+  approved         Boolean         @default(false)
   approvedByUserId String?
   approvedAt       DateTime?
-  planVersion      Int            @default(1)
-  riskLevel        RiskLevel      @default(low)
-  createdBy        CreatedBy      @default(agent)
+  planVersion      Int             @default(1)
+  riskLevel        RiskLevel       @default(low)
+  createdBy        CreatedBy       @default(agent)
   endpoints        ToolEndpoint[]
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  usabilityTasks   UsabilityTask[]
+  usabilityFixes   UsabilityFix[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([projectId])
 }
@@ -276,4 +299,69 @@ model AuditEvent {
   createdAt DateTime @default(now())
 
   @@index([projectId])
+}
+
+// Agent usability check: an LLM plays an agent on tasks written from the spec,
+// and fixes for the tools it gets wrong wait for the user's decision.
+model UsabilityRun {
+  id               String          @id @default(cuid())
+  projectId        String
+  project          Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status           UsabilityStatus @default(running)
+  startedAt        DateTime        @default(now())
+  completedAt      DateTime?
+  errorMessage     String?
+  // Set when the run completed without part of its work, e.g. no fixes.
+  note             String?
+  llmModelId       String?
+  inputTokens      Int             @default(0)
+  outputTokens     Int             @default(0)
+  estimatedCostUsd Decimal         @default(0) @db.Decimal(10, 4)
+  taskCount        Int             @default(0)
+  answeredCount    Int             @default(0)
+  baselineCorrect  Int             @default(0)
+  fixedCorrect     Int?
+  tasks            UsabilityTask[]
+  fixes            UsabilityFix[]
+
+  @@index([projectId])
+}
+
+// Tool links are cleared, not cascaded: re-proposing tools recreates them,
+// and the name snapshots keep old runs readable.
+model UsabilityTask {
+  id             String           @id @default(cuid())
+  runId          String
+  run            UsabilityRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  toolId         String?
+  tool           ToolCandidate?   @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  toolName       String
+  prompt         String
+  expectedArgs   Json
+  candidateNames Json
+  chosenTool     String?
+  chosenArgs     Json?
+  outcome        UsabilityOutcome
+  reason         String?
+
+  @@index([runId])
+}
+
+model UsabilityFix {
+  id                String             @id @default(cuid())
+  runId             String
+  run               UsabilityRun       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  toolId            String?
+  tool              ToolCandidate?     @relation(fields: [toolId], references: [id], onDelete: SetNull)
+  toolName          String
+  beforeName        String
+  afterName         String?
+  beforeDescription String
+  afterDescription  String
+  missesFixed       Int
+  status            UsabilityFixStatus @default(proposed)
+  decidedAt         DateTime?
+  decidedByUserId   String?
+
+  @@index([runId])
 }

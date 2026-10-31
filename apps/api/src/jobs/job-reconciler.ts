@@ -42,6 +42,25 @@ export class JobReconciler implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     await this.reconcile();
     await this.reconcileStages();
+    await this.reconcileUsability();
+  }
+
+  /**
+   * Fail every agent usability check left `running` past `staleAfterMs` (its
+   * process died mid-check). The project's state is untouched: a check never
+   * changes it. Returns how many were recovered.
+   */
+  async reconcileUsability(staleAfterMs: number = STALE_AFTER_MS): Promise<number> {
+    const { count } = await this.prisma.usabilityRun.updateMany({
+      where: { status: "running", startedAt: { lt: new Date(Date.now() - staleAfterMs) } },
+      data: {
+        status: "failed",
+        completedAt: new Date(),
+        errorMessage: "The check was interrupted by a restart and did not finish. Run it again.",
+      },
+    });
+    if (count > 0) this.logger.warn(`Reconciled ${count} interrupted usability check(s) after restart.`);
+    return count;
   }
 
   /**

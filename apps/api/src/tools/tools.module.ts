@@ -6,5 +6,6 @@ import { ProjectOwnershipGuard } from "../common/project-ownership.guard";
 @Module({
   controllers: [ToolsController],
   providers: [ToolsService, ProjectOwnershipGuard],
+  exports: [ToolsService],
 })
 export class ToolsModule {}

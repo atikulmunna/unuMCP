@@ -14,7 +14,7 @@ export class MetricsService {
   async collect(userId: string): Promise<PlatformMetrics> {
     const ownedProject = { project: { userId } };
 
-    const [projectsCreated, specsParsed, runs, tests, securityWarnings] = await Promise.all([
+    const [projectsCreated, specsParsed, runs, tests, securityWarnings, usability] = await Promise.all([
       this.prisma.project.count({ where: { userId } }),
       this.prisma.apiSpec.count({ where: { ...ownedProject, validationStatus: "valid" } }),
       this.prisma.generationRun.findMany({
@@ -36,6 +36,10 @@ export class MetricsService {
       this.prisma.auditEvent.count({
         where: { ...ownedProject, eventType: "security_scan_failed" },
       }),
+      this.prisma.usabilityRun.findMany({
+        where: ownedProject,
+        select: { inputTokens: true, outputTokens: true, estimatedCostUsd: true },
+      }),
     ]);
 
     const runRows: RunRow[] = runs.map((r) => ({
@@ -49,6 +53,12 @@ export class MetricsService {
       estimatedCostUsd: r.estimatedCostUsd == null ? null : Number(r.estimatedCostUsd),
     }));
 
-    return computeMetrics({ projectsCreated, specsParsed, runs: runRows, tests, securityWarnings });
+    const usabilityRuns = usability.map((r) => ({
+      inputTokens: r.inputTokens,
+      outputTokens: r.outputTokens,
+      estimatedCostUsd: Number(r.estimatedCostUsd),
+    }));
+
+    return computeMetrics({ projectsCreated, specsParsed, runs: runRows, tests, securityWarnings, usabilityRuns });
   }
 }

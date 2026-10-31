@@ -6,10 +6,11 @@ import { TestStatus } from "@unumcp/db";
 import { GenerationService } from "../generation/generation.service";
 import { TestingService } from "../testing/testing.service";
 import { RepairService } from "../repair/repair.service";
+import { UsabilityService } from "../usability/usability.service";
 import type { JobsConfig } from "./jobs.config";
 
 const QUEUE = "unumcp";
-export type JobName = "generate" | "test";
+export type JobName = "generate" | "test" | "usability";
 export interface JobData {
   projectId: string;
   userId?: string;
@@ -91,6 +92,10 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return this.enqueue("test", { projectId });
   }
 
+  enqueueUsability(projectId: string): Promise<unknown> {
+    return this.enqueue("usability", { projectId });
+  }
+
   private async enqueue(name: JobName, data: JobData): Promise<unknown> {
     // Inline: run now and return the real result (preserves the synchronous API).
     if (this.config.inline || !this.queue) {
@@ -112,6 +117,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       return this.moduleRef
         .get(GenerationService, { strict: false })
         .generate(data.projectId, data.userId ?? "");
+    }
+    if (name === "usability") {
+      return this.moduleRef.get(UsabilityService, { strict: false }).runCheck(data.projectId);
     }
     const result = await this.moduleRef
       .get(TestingService, { strict: false })

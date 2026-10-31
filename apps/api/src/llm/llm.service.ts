@@ -2,13 +2,22 @@ import { Injectable, Logger } from "@nestjs/common";
 import {
   AnthropicClient,
   ANTHROPIC_DEFAULT_MODEL,
+  chooseTool,
+  proposeFixes,
   proposeToolDescriptions,
   repairCode,
+  writeTasks,
+  type ChosenCall,
+  type FixRequest,
   type LlmClient,
-  type RepairInput,
+  type ProposedFix,
   type ProposedRisk,
+  type RepairInput,
   type RepairResult,
   type ToolProposalInput,
+  type ToolView,
+  type UsabilityCall,
+  type WrittenTask,
 } from "@unumcp/llm";
 import type { LlmTraceContext, LlmTraceEntry, LlmTraceService } from "./llm-trace.service";
 
@@ -128,6 +137,75 @@ export class LlmService {
       return result;
     } catch (err) {
       await this.recordTrace(ctx, { toolName: "repair_code", inputSummary, error: errText(err) });
+      throw err;
+    }
+  }
+
+  /** Usability check: one realistic request per tool (one call). */
+  writeUsabilityTasks(tools: ToolView[], ctx?: LlmTraceContext): Promise<UsabilityCall<WrittenTask[]>> {
+    return this.tracedCall(
+      ctx,
+      "write_usability_tasks",
+      `${tools.length} tool(s): ${tools.map((t) => t.name).join(", ")}`,
+      (client) => writeTasks(client, tools),
+      (tasks) => `wrote ${tasks.length} task(s)`,
+    );
+  }
+
+  /** Usability check: the simulated agent picks a tool for one request. */
+  chooseUsabilityTool(
+    request: string,
+    candidates: ToolView[],
+    ctx?: LlmTraceContext,
+  ): Promise<UsabilityCall<ChosenCall | null>> {
+    return this.tracedCall(
+      ctx,
+      "choose_tool",
+      `${request.slice(0, 160)} (from ${candidates.length} tool(s))`,
+      (client) => chooseTool(client, request, candidates),
+      (call) => (call ? `chose ${call.tool}` : "no readable answer"),
+    );
+  }
+
+  /** Usability check: revised text for the tools the agent got wrong (one call). */
+  proposeUsabilityFixes(
+    requests: FixRequest[],
+    ctx?: LlmTraceContext,
+  ): Promise<UsabilityCall<Map<string, ProposedFix>>> {
+    return this.tracedCall(
+      ctx,
+      "propose_usability_fixes",
+      `${requests.length} tool(s): ${requests.map((r) => r.toolName).join(", ")}`,
+      (client) => proposeFixes(client, requests),
+      (fixes) => `proposed ${fixes.size} fix(es)`,
+    );
+  }
+
+  /**
+   * Run one usability LLM call and trace it. Errors are traced and rethrown:
+   * the check decides what a failed call means (a skipped task, a failed run).
+   */
+  private async tracedCall<T>(
+    ctx: LlmTraceContext | undefined,
+    toolName: string,
+    inputSummary: string,
+    call: (client: LlmClient) => Promise<UsabilityCall<T>>,
+    summarize: (value: T) => string,
+  ): Promise<UsabilityCall<T>> {
+    if (!this.client) throw new Error("LLM is disabled; the usability check needs it.");
+    try {
+      const result = await call(this.client);
+      await this.recordTrace(ctx, {
+        toolName,
+        inputSummary,
+        outputSummary: summarize(result.value),
+        latencyMs: result.latencyMs,
+        inputTokens: result.usage.inputTokens,
+        outputTokens: result.usage.outputTokens,
+      });
+      return result;
+    } catch (err) {
+      await this.recordTrace(ctx, { toolName, inputSummary, error: errText(err) });
       throw err;
     }
   }

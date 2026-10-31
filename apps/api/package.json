@@ -21,6 +21,7 @@
     "@unumcp/openapi": "workspace:*",
     "@unumcp/sandbox": "workspace:*",
     "@unumcp/security-scan": "workspace:*",
+    "@unumcp/usability": "workspace:*",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.81.5",
     "ioredis": "^5.11.1",
