@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/.next/**",
       "**/.turbo/**",
       "**/next-env.d.ts",
+      "packages/db/src/generated/**",
       "spikes/out/**",
       "spikes/specs/**",
       "docs/**",

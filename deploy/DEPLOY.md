@@ -54,10 +54,16 @@ prints the current one. Want a stable URL? See "Stable URL" below.
 
 ## 3. Redeploy after pushing code
 
+`generate` rebuilds the Prisma client (a no-change `pnpm install` skips it), and `db push`
+applies any schema changes, reading `DATABASE_URL` from the API's `.env`.
+
 ```bash
 bash deploy/manage.sh ssh
 # on the box:
-cd /opt/unumcp && git pull && pnpm install && (cd apps/web && pnpm build) \
+cd /opt/unumcp && git pull && pnpm install \
+  && pnpm --filter @unumcp/db generate \
+  && (cd packages/db && set -a && . ../../apps/api/.env && set +a && pnpm exec prisma db push) \
+  && (cd apps/web && pnpm build) \
   && pnpm --filter @unumcp/sandbox build-image \
   && sudo systemctl restart unumcp-api unumcp-web
 ```

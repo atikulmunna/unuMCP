@@ -2,7 +2,10 @@
 // RepairAttempt, TestResult, GenerationRun version/cost fields).
 
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  // CommonJS, because the API runs as CommonJS (the ESM output uses import.meta).
+  moduleFormat = "cjs"
 }
 
 datasource db {
