@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, prismaClientOptions } from "../src/index";
 
 // Integration test: requires the dev Postgres (docker compose up postgres).
-const prisma = new PrismaClient();
+const prisma = new PrismaClient(prismaClientOptions());
 const createdUserIds: string[] = [];
 
 afterAll(async () => {

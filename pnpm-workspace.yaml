@@ -2,10 +2,6 @@ packages:
   - "apps/*"
   - "packages/*"
   - "spikes"
-overrides:
-  # Prisma's config loader pins deepmerge-ts 7 (stack exhaustion on recursive
-  # objects, fixed in 8). It only calls `deepmerge`, which 8 keeps unchanged.
-  "@prisma/config>deepmerge-ts": ^8.0.2
 allowBuilds:
   '@nestjs/core': true
   '@prisma/client': true

@@ -52,7 +52,7 @@ cd "$APP"
 export NEXT_TELEMETRY_DISABLED=1 CI=true
 pnpm install --frozen-lockfile
 until docker exec unumcp-pg pg_isready -U unumcp; do sleep 2; done
-( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma db push --skip-generate )
+( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma db push )
 ( cd apps/web && pnpm build )
 # Pre-build the sandbox image (dependencies baked in) so the first test run is fast.
 pnpm --filter @unumcp/sandbox build-image

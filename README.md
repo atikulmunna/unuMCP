@@ -76,7 +76,7 @@ Design principles worth knowing before you read the code:
 | --- | --- | --- |
 | Backend / orchestrator | **NestJS 12** | DI + guards map cleanly to the auth/authz and multi-stage layout |
 | Frontend dashboard | **Next.js 16** (App Router), React 19, Tailwind v4 | Same-origin `/api/*` proxied to the backend (no CORS needed) |
-| Database | **PostgreSQL 16** via **Prisma** | Projects, runs, tools, test results, repair attempts, audit log |
+| Database | **PostgreSQL 16** via **Prisma 7** (pg driver adapter) | Projects, runs, tools, test results, repair attempts, audit log |
 | Background jobs | **BullMQ + Redis** (optional) | Long-running generation/test/repair survive restarts; falls back to inline |
 | Sandbox | **Docker**, prebuilt image | Dependencies baked into a content-hashed image; tests run with `--network none`, non-root, no capabilities, read-only mounts, resource caps |
 | LLM | **Anthropic Claude** (official SDK), via `@unumcp/llm` | Opt-in (`LLM_PROVIDER=anthropic`); optional, since the platform degrades gracefully without it |
@@ -123,8 +123,8 @@ cp .env.example apps/api/.env
 #   (REDIS_URL and the LLM, LLM_PROVIDER=anthropic plus ANTHROPIC_API_KEY, are optional; see below)
 
 # 4. Apply the database schema.
-#   Prisma reads DATABASE_URL from the environment (NOT apps/api/.env), and it
-#   defaults to the docker-compose database, so make sure it's exported:
+#   The Prisma CLI reads DATABASE_URL from the environment (NOT apps/api/.env;
+#   see packages/db/prisma.config.ts), so pass it for the docker-compose database:
 DATABASE_URL=postgresql://unumcp:unumcp@localhost:5433/unumcp \
   pnpm --filter @unumcp/db exec prisma db push        # or: prisma migrate dev
 

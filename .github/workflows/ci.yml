@@ -43,7 +43,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Apply database schema
-        run: pnpm --filter @unumcp/db exec prisma db push --skip-generate
+        run: pnpm --filter @unumcp/db exec prisma db push
 
       - name: Lint
         run: pnpm lint
