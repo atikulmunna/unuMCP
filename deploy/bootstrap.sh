@@ -23,7 +23,7 @@ fi
 dnf install -y docker git
 systemctl enable --now docker
 
-# 3. Node 22 (pnpm 11 needs >= 22.13) + pnpm, on deterministic paths for systemd.
+# 3. Node 22 (swagger-parser 13 needs >= 22.19) + pnpm, on deterministic paths for systemd.
 curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
 dnf install -y nodejs
 npm install -g pnpm@11.5.1

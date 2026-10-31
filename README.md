@@ -104,7 +104,7 @@ packages/
 
 ## Prerequisites
 
-- **Node.js ≥ 22.13** (required by pnpm 11.5.1)
+- **Node.js ≥ 22.19** (required by swagger-parser 13, the spec dereferencer)
 - **pnpm 11.5.1** (`corepack enable` will pin it from `packageManager`)
 - **Docker**: required both for local Postgres/Redis (`docker compose`) **and** for the test sandbox that runs a generated server's tests
 
