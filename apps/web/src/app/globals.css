@@ -1,9 +1,6 @@
-/* Fonts load at runtime (no build-time network dependency); the font stacks
-   in the theme below degrade gracefully to local serif/sans/mono if Google
-   Fonts is unreachable. */
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,380;9..144,460;9..144,560;9..144,640&family=Inter:wght@400;450;500;600&family=JetBrains+Mono:wght@420;500&display=swap")
-layer(base);
-
+/* The web fonts are linked from the root layout (see layout.tsx); the font
+   stacks in the theme below degrade gracefully to local serif/sans/mono if
+   Google Fonts is unreachable. */
 @import "tailwindcss";
 
 /* unuMCP visual language: an editorial workbench, not a SaaS template.

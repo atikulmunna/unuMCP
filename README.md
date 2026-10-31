@@ -75,7 +75,7 @@ Design principles worth knowing before you read the code:
 | Layer | Tech | Notes |
 | --- | --- | --- |
 | Backend / orchestrator | **NestJS 12** | DI + guards map cleanly to the auth/authz and multi-stage layout |
-| Frontend dashboard | **Next.js 15** (App Router), React 19, Tailwind v3 | Same-origin `/api/*` proxied to the backend (no CORS needed) |
+| Frontend dashboard | **Next.js 16** (App Router), React 19, Tailwind v4 | Same-origin `/api/*` proxied to the backend (no CORS needed) |
 | Database | **PostgreSQL 16** via **Prisma** | Projects, runs, tools, test results, repair attempts, audit log |
 | Background jobs | **BullMQ + Redis** (optional) | Long-running generation/test/repair survive restarts; falls back to inline |
 | Sandbox | **Docker**, prebuilt image | Dependencies baked into a content-hashed image; tests run with `--network none`, non-root, no capabilities, read-only mounts, resource caps |
