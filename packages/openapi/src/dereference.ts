@@ -10,10 +10,14 @@ import type { OpenAPIV3 } from "openapi-types";
  *
  * The input is cloned first because SwaggerParser mutates the document it is
  * given; callers keep their original object intact.
+ *
+ * Only references inside the document are followed. The spec comes from a
+ * user, so an external `$ref` would make the server read its own files or
+ * fetch URLs on their behalf (validateSpec rejects those at upload too).
  */
 export async function dereferenceSpec(input: object): Promise<OpenAPIV3.Document> {
   const clone = structuredClone(input);
-  const api = await SwaggerParser.dereference(clone as never);
+  const api = await SwaggerParser.dereference(clone as never, { resolve: { external: false } });
   return api as OpenAPIV3.Document;
 }
 

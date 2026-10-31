@@ -51,6 +51,36 @@ describe("validateSpec", () => {
     expect(r.errors.join(" ")).toContain("no API paths");
   });
 
+  it("refuses references to other files or URLs and accepts internal ones", () => {
+    const withRef = (ref: string) => ({
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: { "/x": { get: { responses: { "200": { $ref: ref } } } } },
+    });
+    for (const ref of [
+      "../../apps/api/.env",
+      "file:///etc/passwd",
+      "http://169.254.169.254/latest/meta-data/",
+      "common.yaml#/components/schemas/Error",
+    ]) {
+      const r = validateSpec(withRef(ref));
+      expect(r.valid).toBe(false);
+      expect(r.errors.join(" ")).toContain(`References to other files or URLs aren't supported ("${ref}")`);
+    }
+    expect(validateSpec(withRef("#/components/responses/Ok")).valid).toBe(true);
+  });
+
+  it("names at most three external references, once each, and survives cycles", () => {
+    const op = (ref: string) => ({ get: { responses: { "200": { $ref: ref } } } });
+    const doc: Record<string, any> = {
+      openapi: "3.0.3",
+      paths: { "/a": op("a.yaml"), "/b": op("b.yaml"), "/c": op("a.yaml"), "/d": op("c.yaml"), "/e": op("d.yaml") },
+    };
+    doc.paths["/a"].self = doc.paths["/a"];
+    const r = validateSpec(doc);
+    expect(r.errors.join(" ")).toContain('("a.yaml", "b.yaml", "c.yaml" and 1 more)');
+  });
+
   it("accepts a valid spec and extracts metadata", () => {
     const r = validateSpec({
       openapi: "3.0.3",

@@ -200,6 +200,24 @@ describe("spec upload pipeline (P1-7/8/9)", () => {
     expect(project.body.status).toBe("SPEC_INVALID");
   });
 
+  it("refuses a spec that references the server's files", async () => {
+    const token = await makeUser("extref");
+    const projectId = await makeProject(token);
+    const auth = { Authorization: `Bearer ${token}` };
+    const spec = JSON.parse(validSpec);
+    spec.info.description = { $ref: "../../apps/api/.env" };
+
+    const res = await request(app.getHttpServer())
+      .post(`/projects/${projectId}/spec/upload`)
+      .set(auth)
+      .send({ filename: "ref.json", content: JSON.stringify(spec) });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body.errors)).toContain("References to other files or URLs");
+
+    const project = await request(app.getHttpServer()).get(`/projects/${projectId}`).set(auth);
+    expect(project.body.status).toBe("SPEC_INVALID");
+  });
+
   it("rejects unsupported file extensions", async () => {
     const token = await makeUser("ext");
     const projectId = await makeProject(token);

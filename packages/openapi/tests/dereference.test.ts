@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { dereferenceSpec, hasUnresolvedRef } from "../src/dereference";
 
@@ -97,6 +101,31 @@ describe("dereferenceSpec", () => {
     const before = JSON.stringify(spec);
     await dereferenceSpec(spec);
     expect(JSON.stringify(spec)).toBe(before);
+  });
+});
+
+describe("dereferenceSpec with references outside the document", () => {
+  it("never reads the server's files or fetches URLs for an uploaded spec", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "unumcp-ref-"));
+    const secretFile = join(dir, "secret.env");
+    writeFileSync(secretFile, "JWT_SECRET=do-not-leak\n");
+    try {
+      const spec = {
+        openapi: "3.0.3",
+        info: baseInfo,
+        paths: {
+          "/a": { get: { description: { $ref: secretFile.replaceAll("\\", "/") }, responses: {} } },
+          "/b": { get: { description: { $ref: pathToFileURL(secretFile).href }, responses: {} } },
+          // Port 9 refuses connections, so a fetch would fail the test fast.
+          "/c": { get: { responses: { "200": { $ref: "http://127.0.0.1:9/schema.json" } } } },
+        },
+      };
+      const deref = await dereferenceSpec(spec);
+      expect(JSON.stringify(deref)).not.toContain("do-not-leak");
+      expect((deref.paths["/c"] as any).get.responses["200"].$ref).toBe("http://127.0.0.1:9/schema.json");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

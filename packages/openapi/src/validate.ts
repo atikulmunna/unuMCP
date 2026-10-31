@@ -60,6 +60,15 @@ export function validateSpec(doc: Record<string, unknown>): SpecValidation {
     errors.push("The `paths` section contains no API paths.");
   }
 
+  const external = externalRefs(doc);
+  if (external.length > 0) {
+    const shown = external.slice(0, 3).map((ref) => `"${ref}"`).join(", ");
+    const more = external.length > 3 ? ` and ${external.length - 3} more` : "";
+    errors.push(
+      `References to other files or URLs aren't supported (${shown}${more}). Bundle the spec into a single file (for example with \`redocly bundle\`), then upload the result.`,
+    );
+  }
+
   const info = doc.info as Record<string, unknown> | undefined;
   const servers = doc.servers as Array<{ url?: string }> | undefined;
 
@@ -71,6 +80,26 @@ export function validateSpec(doc: Record<string, unknown>): SpecValidation {
     version: info?.version as string | undefined,
     baseUrl: servers?.[0]?.url,
   };
+}
+
+/**
+ * Every `$ref` that points outside the document (a file path or URL), in
+ * document order without repeats. Resolving one would make the server read its
+ * own files or fetch URLs for whoever uploaded the spec. YAML aliases can make
+ * the parsed object graph cyclic, so the walk is cycle-guarded.
+ */
+function externalRefs(doc: unknown): string[] {
+  const found = new Set<string>();
+  const seen = new WeakSet<object>();
+  const walk = (node: unknown): void => {
+    if (node === null || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    const ref = (node as Record<string, unknown>).$ref;
+    if (typeof ref === "string" && !ref.startsWith("#")) found.add(ref);
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk(doc);
+  return [...found];
 }
 
 /**
