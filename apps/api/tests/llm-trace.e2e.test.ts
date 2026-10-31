@@ -23,7 +23,7 @@ const fakeClient: LlmClient = {
     }));
     return {
       text: JSON.stringify({ descriptions }),
-      model: "meta/llama-3.3-70b-instruct",
+      model: "claude-haiku-4-5",
       usage: { inputTokens: 120, outputTokens: 14 },
       latencyMs: 7,
     };

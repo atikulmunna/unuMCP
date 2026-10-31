@@ -1,8 +1,7 @@
 /**
- * Tuning for the batched tool-description stage (P2-6, NFR-007b). NIM has no
- * prompt caching, so the cost/latency lever for a large spec is fewer, larger
- * LLM calls: describe `batchSize` tools per call, and run up to `concurrency`
- * batches at once. Both are env-overridable and clamped to sane bounds.
+ * Tuning for the batched tool-description stage (P2-6, NFR-007b). For a large
+ * spec the cost/latency lever is fewer, larger LLM calls: describe `batchSize`
+ * tools per call, and run up to `concurrency` batches at once. Both are env-overridable and clamped to sane bounds.
  */
 export interface ProposalConfig {
   batchSize: number;

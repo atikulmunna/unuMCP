@@ -2,8 +2,6 @@ import { Injectable, Logger } from "@nestjs/common";
 import {
   AnthropicClient,
   ANTHROPIC_DEFAULT_MODEL,
-  GeminiClient,
-  NimClient,
   proposeToolDescriptions,
   repairCode,
   type LlmClient,
@@ -14,56 +12,31 @@ import {
 } from "@unumcp/llm";
 import type { LlmTraceContext, LlmTraceEntry, LlmTraceService } from "./llm-trace.service";
 
-export type LlmProvider = "nim" | "gemini" | "anthropic";
-
 export interface LlmConfig {
   enabled: boolean;
-  /** Which backend to talk to (Gemini/NIM over OpenAI-compatible HTTP, or Anthropic). Defaults to "nim". */
-  provider?: LlmProvider;
   model: string;
   apiKey?: string;
 }
 
-const NIM_DEFAULT_MODEL = "meta/llama-3.3-70b-instruct";
-const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash";
-
 /**
- * Resolve LLM config from env. The provider is chosen by `LLM_PROVIDER` when set,
- * otherwise auto-detected from whichever key is present (Gemini preferred, since
- * its free tier is the common case). Disabled when no key is present or opted out.
- *
- * Anthropic is never auto-selected: it bills per token, and `ANTHROPIC_API_KEY`
- * is often exported globally for other tools, so a key alone must not start
- * spending. It needs an explicit `LLM_PROVIDER=anthropic`.
+ * Resolve LLM config from env. The LLM is Claude, through Anthropic's API, and
+ * it is opt-in: it runs only with `LLM_PROVIDER=anthropic` and an
+ * `ANTHROPIC_API_KEY`. Claude bills per token, and `ANTHROPIC_API_KEY` is often
+ * exported globally for other tools, so a key alone must never start spending.
+ * `LLM_DISABLED=true` turns it off even when configured.
  */
 export function llmConfigFromEnv(env: NodeJS.ProcessEnv = process.env): LlmConfig {
-  const geminiKey = env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY;
-  const nimKey = env.NVIDIA_API_KEY ?? env.NIM_API_KEY;
-  const provider: LlmProvider =
-    env.LLM_PROVIDER === "nim" || env.LLM_PROVIDER === "gemini" || env.LLM_PROVIDER === "anthropic"
-      ? env.LLM_PROVIDER
-      : geminiKey
-        ? "gemini"
-        : "nim";
-  const apiKey =
-    provider === "gemini" ? geminiKey : provider === "anthropic" ? env.ANTHROPIC_API_KEY : nimKey;
-  const model =
-    provider === "gemini"
-      ? (env.GEMINI_MODEL ?? GEMINI_DEFAULT_MODEL)
-      : provider === "anthropic"
-        ? (env.ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT_MODEL)
-        : (env.NIM_MODEL ?? NIM_DEFAULT_MODEL);
+  const apiKey = env.ANTHROPIC_API_KEY;
   return {
-    enabled: Boolean(apiKey) && env.LLM_DISABLED !== "true",
-    provider,
-    model,
+    enabled: env.LLM_PROVIDER === "anthropic" && Boolean(apiKey) && env.LLM_DISABLED !== "true",
+    model: env.ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT_MODEL,
     apiKey,
   };
 }
 
 /**
- * Thin LLM seam for the platform (P2-5, FR-013). Wraps the provider-agnostic
- * `@unumcp/llm` client so call sites never touch the provider, and **degrades
+ * Thin LLM seam for the platform (P2-5, FR-013). Wraps the `@unumcp/llm`
+ * client so call sites never touch the provider SDK, and **degrades
  * gracefully**: when the LLM is disabled (no key) or a call fails, it returns
  * `null` so the caller keeps its deterministic fallback. An LLM hiccup must
  * never block tool proposal.
@@ -172,15 +145,7 @@ export class LlmService {
 /** The configured provider's client, or `null` when the LLM is disabled. */
 function createClient(config: LlmConfig): LlmClient | null {
   if (!config.enabled || !config.apiKey) return null;
-  const { apiKey, model } = config;
-  switch (config.provider) {
-    case "gemini":
-      return new GeminiClient({ apiKey, model });
-    case "anthropic":
-      return new AnthropicClient({ apiKey, model });
-    default:
-      return new NimClient({ apiKey, model });
-  }
+  return new AnthropicClient({ apiKey: config.apiKey, model: config.model });
 }
 
 function errText(err: unknown): string {

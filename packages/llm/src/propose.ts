@@ -57,8 +57,8 @@ const BATCH_SYSTEM_PROMPT = [
 
 /**
  * Describe and rate many tools in one LLM round-trip (FR-013, P2-6, NFR-007b).
- * NIM has no prompt caching, so the cost and latency lever for a large spec is
- * fewer, larger calls: one call per batch instead of one per endpoint.
+ * For a large spec the cost and latency lever is fewer, larger calls: one call
+ * per batch instead of one per endpoint.
  * Descriptions come back aligned to the input order; any the model omits or
  * that look secret-shaped are `null` so the caller keeps its deterministic
  * draft for that one tool. The tool name and input schema stay deterministic

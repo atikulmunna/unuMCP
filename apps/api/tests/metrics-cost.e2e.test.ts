@@ -11,14 +11,15 @@ import { LlmTraceService } from "../src/llm/llm-trace.service";
 
 // Enabled fake LLM (batch shape, echoes tool names) with fixed usage, so the
 // propose stage records real token counts the default LLM_DISABLED suite can't.
-const USAGE = { inputTokens: 200, outputTokens: 30 };
+// Haiku 4.5 list price: $1/M in, $5/M out, so this costs exactly $0.004.
+const USAGE = { inputTokens: 2000, outputTokens: 400 };
 const fakeClient: LlmClient = {
   complete: async (req) => {
     const userMsg = req.messages.find((m) => m.role === "user")?.content ?? "";
     const names = [...userMsg.matchAll(/"toolName":\s*"([^"]+)"/g)].map((m) => m[1]);
     return {
       text: JSON.stringify({ descriptions: names.map((name) => ({ name, description: "Lists things. Read-only." })) }),
-      model: "gemini-3.5-flash",
+      model: "claude-haiku-4-5",
       usage: USAGE,
       latencyMs: 5,
     };
@@ -56,7 +57,7 @@ beforeAll(async () => {
     .overrideProvider(LlmService)
     .useFactory({
       factory: (p: PrismaService) =>
-        new LlmService({ enabled: true, provider: "gemini", model: "gemini-3.5-flash", apiKey: "k" }, fakeClient, new LlmTraceService(p)),
+        new LlmService({ enabled: true, model: "claude-haiku-4-5", apiKey: "k" }, fakeClient, new LlmTraceService(p)),
       inject: [PrismaService],
     })
     .compile();
@@ -89,15 +90,15 @@ describe("LLM token/cost on GenerationRun + metrics (P6-7, NFR-007b)", () => {
     });
     expect(run.inputTokens).toBe(USAGE.inputTokens);
     expect(run.outputTokens).toBe(USAGE.outputTokens);
-    expect(run.llmModelId).toBe("gemini-3.5-flash");
-    expect(Number(run.estimatedCostUsd)).toBe(0); // free tier
+    expect(run.llmModelId).toBe("claude-haiku-4-5");
+    expect(Number(run.estimatedCostUsd)).toBe(0.004);
 
     const metrics = await request(app.getHttpServer()).get("/metrics").set(auth);
     expect(metrics.status).toBe(200);
     expect(metrics.body.cost).toEqual({
       totalInputTokens: USAGE.inputTokens,
       totalOutputTokens: USAGE.outputTokens,
-      totalEstimatedCostUsd: 0,
+      totalEstimatedCostUsd: 0.004,
     });
   });
 });

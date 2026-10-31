@@ -6,7 +6,8 @@
 #
 #   bash deploy/provision.sh
 #
-# Requires: AWS CLI authenticated, and GEMINI_API_KEY present in apps/api/.env.
+# Requires: AWS CLI authenticated. The demo runs with the LLM off: it has open
+# registration, so no paid API key is ever sent to it.
 set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-1}"
@@ -20,11 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 say() { echo "==> $*"; }
 aws() { command aws --region "$REGION" "$@"; }
 
-# --- secrets (read locally, never written to the repo) ---
-ENV_FILE="$ROOT/apps/api/.env"
-[ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE (need GEMINI_API_KEY)"; exit 1; }
-GEMINI_API_KEY="$(grep -E '^GEMINI_API_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r"'"'"' ' )"
-[ -n "$GEMINI_API_KEY" ] || { echo "GEMINI_API_KEY not set in $ENV_FILE"; exit 1; }
+# --- secrets (generated here, never written to the repo) ---
 JWT_SECRET="$(openssl rand -hex 32)"
 DB_PASSWORD="$(openssl rand -hex 16)"
 
@@ -63,7 +60,6 @@ say "Security group: $SG_ID"
 USERDATA="$(mktemp)"; trap 'rm -f "$USERDATA"' EXIT
 {
   echo '#!/bin/bash'
-  echo "export GEMINI_API_KEY='$GEMINI_API_KEY'"
   echo "export JWT_SECRET='$JWT_SECRET'"
   echo "export DB_PASSWORD='$DB_PASSWORD'"
   tail -n +2 "$ROOT/deploy/bootstrap.sh"

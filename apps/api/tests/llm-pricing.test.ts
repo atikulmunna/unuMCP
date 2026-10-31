@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { estimateCostUsd, type TokenPrice } from "../src/llm/llm-pricing";
 
 describe("estimateCostUsd (P6-7, NFR-007b)", () => {
-  it("returns 0 for free-tier / unknown / null models (never NaN)", () => {
-    expect(estimateCostUsd("gemini-3.5-flash", 1000, 500)).toBe(0);
-    expect(estimateCostUsd("meta/llama-3.3-70b-instruct", 9999, 9999)).toBe(0);
+  it("returns 0 for unknown or null models (never NaN)", () => {
+    expect(estimateCostUsd("some-unpriced-model", 1000, 500)).toBe(0);
     expect(estimateCostUsd(null, 1000, 500)).toBe(0);
     expect(estimateCostUsd(undefined, 1000, 500)).toBe(0);
   });

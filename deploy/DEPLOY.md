@@ -3,7 +3,7 @@
 A fully scripted deploy of the whole platform onto one small EC2 box. Chosen for
 one reason: unuMCP runs generated code in a **Docker sandbox**, which needs a real
 Docker daemon (Render/Railway free tiers can't do this). Everything else (Postgres,
-inline job queue, Gemini free-tier LLM, Cloudflare quick tunnel) rides along.
+inline job queue, Cloudflare quick tunnel) rides along; the LLM stays off on the demo.
 
 ## What it creates
 
@@ -19,8 +19,10 @@ Access is a free `https://<random>.trycloudflare.com` URL (no Cloudflare account
 ## Prerequisites
 
 - AWS CLI authenticated (`aws sts get-caller-identity` works).
-- `GEMINI_API_KEY` present in `apps/api/.env` (the provisioner reads it and injects it
-  at launch only; it is never committed). `JWT_SECRET` and the DB password are generated.
+- Nothing else: `JWT_SECRET` and the DB password are generated at launch and never
+  committed. The demo runs with the LLM off (deterministic tool descriptions, no
+  repair), because it has open registration and a paid key there could be spent by
+  anyone who signs up.
 
 ## 1. Provision (one command)
 

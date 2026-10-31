@@ -10,7 +10,7 @@ function fakeClient(text: string): { client: LlmClient; seen: LlmRequest[] } {
       seen.push(request);
       return Promise.resolve({
         text,
-        model: "meta/llama-3.3-70b-instruct",
+        model: "claude-haiku-4-5",
         usage: { inputTokens: 200, outputTokens: 25 },
         latencyMs: 5,
       });

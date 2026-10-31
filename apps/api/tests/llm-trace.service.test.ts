@@ -66,7 +66,7 @@ describe("LlmTraceService (P5-5, FR-031)", () => {
       projectId: "p1",
       toolName: "repair_code",
       inputSummary: "1 file(s): src/tools/x.ts",
-      error: "Error: NIM request failed (503)",
+      error: "Error: provider request failed (503)",
     });
     const { data } = create.mock.calls[0]![0];
     expect(data.metadata).toMatchObject({ status: "error", error: expect.stringContaining("503") });
@@ -112,7 +112,7 @@ describe("LlmService.describeAndRateToolsBatch (P2-6, FR-031)", () => {
           { name: "get_issue", description: "Fetches an issue by id." },
         ],
       }),
-      model: "meta/llama-3.3-70b-instruct",
+      model: "claude-haiku-4-5",
       usage: { inputTokens: 300, outputTokens: 40 },
       latencyMs: 9,
     })),
@@ -142,7 +142,7 @@ describe("LlmService.describeAndRateToolsBatch (P2-6, FR-031)", () => {
   it("returns all-null (never throws) and traces an error when the provider fails", async () => {
     const record = vi.fn(async (_e: LlmTraceEntry) => undefined);
     const trace = { record } as unknown as LlmTraceService;
-    const client: LlmClient = { complete: vi.fn(async () => { throw new Error("NIM 503"); }) };
+    const client: LlmClient = { complete: vi.fn(async () => { throw new Error("provider 503"); }) };
     const svc = new LlmService({ enabled: true, model: "m", apiKey: "k" }, client, trace);
 
     const out = (await svc.describeAndRateToolsBatch(twoInputs, { projectId: "p9" })).descriptions;

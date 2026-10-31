@@ -83,7 +83,7 @@ async function main(): Promise<void> {
   console.log(`LLM enabled: ${llm.enabled}  (model ${llm.model ?? "none"}, provider from env)`);
   if (!llm.enabled) {
     console.error(
-      "LLM is DISABLED: set GEMINI_API_KEY or NVIDIA_API_KEY (or LLM_PROVIDER=anthropic with ANTHROPIC_API_KEY) in apps/api/.env. Aborting.",
+      "LLM is DISABLED: set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in apps/api/.env. Aborting.",
     );
     await app.close();
     process.exitCode = 1;

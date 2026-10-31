@@ -1,8 +1,7 @@
 /**
  * LLM cost estimation (NFR-007b, P6-7). Turns token counts into an estimated
- * USD cost from a per-model price table. Gemini (AI Studio) and NVIDIA NIM run
- * on **free tiers**, so they are absent and cost 0; Anthropic is billed per
- * token, so its models are priced here and the metrics show real spend.
+ * USD cost from a per-model price table of Claude's list prices, so the metrics
+ * show real spend. A model missing from the table costs 0 (never NaN).
  */
 export interface TokenPrice {
   /** USD per 1,000,000 input tokens. */
@@ -11,7 +10,7 @@ export interface TokenPrice {
   outputPerM: number;
 }
 
-/** Known paid prices, keyed by model id. Free-tier models are simply absent (→ 0). */
+/** Known prices, keyed by model id. A model not listed costs 0. */
 const PRICE_TABLE: Record<string, TokenPrice> = {
   // Anthropic list prices. Claude's output tokens include any thinking tokens.
   "claude-haiku-4-5": { inputPerM: 1, outputPerM: 5 },

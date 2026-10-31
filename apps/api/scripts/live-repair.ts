@@ -2,8 +2,8 @@
  * LIVE repair-loop run (not a unit test). Drives the real API to TESTS_FAILED by
  * planting a realistic defect in a *persisted* generated source artifact, then
  * lets the inline repair loop (LLM enabled) fix it: read failure → LLM patches
- * implementation-only → rerun sandbox → TESTS_PASSED. Proves P4-5/P4-6 live with
- * whichever provider is auto-selected (Gemini).
+ * implementation-only → rerun sandbox → TESTS_PASSED. Proves P4-5/P4-6 live on
+ * Claude (needs LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY; this spends credit).
  *
  * Run from apps/api (swc for decorators), 1 attempt to bound wall time:
  *   DATABASE_URL=postgresql://unumcp:unumcp@localhost:5434/unumcp?schema=public \
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
 
   console.log(`LLM enabled: ${llm.enabled}  |  MAX_REPAIR_ATTEMPTS=${process.env.MAX_REPAIR_ATTEMPTS ?? "2"}`);
   if (!llm.enabled) {
-    console.error("LLM disabled: set GEMINI_API_KEY. Aborting.");
+    console.error("LLM disabled: set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY. Aborting.");
     await app.close();
     process.exitCode = 1;
     return;

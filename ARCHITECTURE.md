@@ -44,7 +44,7 @@ packages/        pure, IO-free domain logic (unit-tested without a database or D
   codegen/         the generated server's files
   security-scan/   static scan, secret redaction, prompt-injection flags
   sandbox/         sandbox image definition, container arguments, test verdict
-  llm/             provider-agnostic LLM client (Gemini, NVIDIA NIM, Anthropic)
+  llm/             Claude client (Anthropic SDK) and the description/repair prompts
   db/              Prisma schema and client
 apps/
   api/             NestJS shell: HTTP, auth, persistence, jobs, orchestration
@@ -111,10 +111,12 @@ API's own site pass, links elsewhere are noted for review, and text telling the
 agent to send data to an outside host is refused as tool poisoning. Secret
 patterns apply to every byte, and a file that doesn't parse is scanned raw.
 
-**Providers are a seam.** `LlmClient` has one method. Gemini and NIM speak the
-OpenAI-compatible API; Anthropic uses its official SDK. Free tiers are
-auto-selected; the paid provider needs an explicit `LLM_PROVIDER=anthropic`.
-Every call is recorded as an audit event with tokens and estimated cost.
+**The LLM is Claude, opt-in.** Call sites depend on `LlmClient`, a one-method
+interface; the real implementation wraps Anthropic's official SDK, and tests
+use scripted clients. Claude bills per token, so it runs only with an explicit
+`LLM_PROVIDER=anthropic` and a key; an exported key alone never starts
+spending. Every call is recorded as an audit event with tokens and estimated
+cost.
 
 **Jobs are durable when it matters.** With `REDIS_URL` set, generation and
 testing run on a BullMQ queue; without it they run inline (fine for one box).

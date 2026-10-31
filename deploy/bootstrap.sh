@@ -1,8 +1,9 @@
 #!/bin/bash
 # First-boot bootstrap for the unuMCP demo box (Amazon Linux 2023, arm64).
-# Runs as root via EC2 user-data. Secret-free by design: it reads GEMINI_API_KEY,
-# JWT_SECRET and DB_PASSWORD from the environment that provision.sh prepends to
-# this file at launch (so no secret is ever committed to the repo).
+# Runs as root via EC2 user-data. Secret-free by design: it reads JWT_SECRET and
+# DB_PASSWORD from the environment that provision.sh prepends to this file at
+# launch (so no secret is ever committed to the repo). No LLM is configured, so
+# the demo uses deterministic tool descriptions and skips repair.
 set -euxo pipefail
 exec > /var/log/unumcp-bootstrap.log 2>&1
 echo "unuMCP bootstrap started: $(date -u)"
@@ -43,7 +44,6 @@ git clone --depth 1 "$REPO" "$APP"
 cat > "$APP/apps/api/.env" <<EOF
 DATABASE_URL="$DB_URL"
 JWT_SECRET=$JWT_SECRET
-GEMINI_API_KEY=$GEMINI_API_KEY
 PORT=3001
 EOF
 

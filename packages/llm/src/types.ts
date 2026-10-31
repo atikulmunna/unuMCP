@@ -1,8 +1,6 @@
 /**
- * Provider-agnostic LLM contract (P0-4 / FR-013). The platform's stack was
- * originally locked to Anthropic; this interface decouples the call sites from
- * the provider so NVIDIA NIM (OpenAI-compatible) can be the first implementation
- * and Anthropic (or any other) can be swapped in without touching callers.
+ * The LLM contract (P0-4 / FR-013). Call sites depend on this interface, not on
+ * Anthropic's SDK, so tests can drive every LLM stage with a scripted client.
  */
 
 export type LlmRole = "system" | "user" | "assistant";
@@ -36,14 +34,3 @@ export interface LlmCompletion {
 export interface LlmClient {
   complete(request: LlmRequest): Promise<LlmCompletion>;
 }
-
-/** Minimal fetch surface we depend on, injectable so tests need no network. */
-export type FetchLike = (
-  url: string,
-  init: {
-    method: string;
-    headers: Record<string, string>;
-    body: string;
-    signal?: AbortSignal;
-  },
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
