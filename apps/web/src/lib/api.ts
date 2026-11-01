@@ -135,6 +135,7 @@ export const api = {
     list: () => request<Project[]>("/projects"),
     create: (name: string, description?: string) =>
       request<Project>("/projects", { method: "POST", body: { name, description } }),
+    createSample: () => request<Project>("/projects/sample", { method: "POST" }),
     get: (id: string) => request<Project>(`/projects/${id}`),
     remove: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
     audit: (id: string) => request<AuditEvent[]>(`/projects/${id}/audit`),

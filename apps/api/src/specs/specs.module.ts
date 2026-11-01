@@ -6,5 +6,6 @@ import { ProjectOwnershipGuard } from "../common/project-ownership.guard";
 @Module({
   controllers: [SpecsController],
   providers: [SpecsService, ProjectOwnershipGuard],
+  exports: [SpecsService],
 })
 export class SpecsModule {}

@@ -9,6 +9,7 @@ import { JobsModule } from "./jobs/jobs.module";
 import { RepairModule } from "./repair/repair.module";
 import { MetricsModule } from "./metrics/metrics.module";
 import { UsabilityModule } from "./usability/usability.module";
+import { SamplesModule } from "./samples/samples.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { StorageModule } from "./storage/storage.module";
 import { AuthModule } from "./auth/auth.module";
@@ -34,6 +35,7 @@ import { CompletionModule } from "./completion/completion.module";
     TestingModule,
     CompletionModule,
     MetricsModule,
+    SamplesModule,
     UsabilityModule,
   ],
   providers: [

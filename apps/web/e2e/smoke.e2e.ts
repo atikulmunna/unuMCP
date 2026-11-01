@@ -31,6 +31,21 @@ test("styles and web fonts are wired up", async ({ page }) => {
   expect(await page.evaluate(() => getComputedStyle(document.querySelector("h2, h1")!).fontFamily)).toMatch(/^Fraunces\b/);
 });
 
+test("the sample project shows the recorded usability check and its fixes", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("Email").fill(`smoke-sample-${Date.now()}@example.com`);
+  await page.getByLabel("Password").fill("smoke-test-password");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+
+  await page.getByRole("button", { name: "Try a sample" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Acme Billing (sample)" })).toBeVisible();
+  await expect(page.getByText("A sample project")).toBeVisible();
+  await expect(page.getByText(/Agents chose the right tool for \d+ of \d+ tasks/)).toBeVisible();
+  await expect(page.getByText(/goes with/).first()).toBeVisible();
+});
+
 test("sign up, create a project, upload a spec, and get a tool plan", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(err.message));

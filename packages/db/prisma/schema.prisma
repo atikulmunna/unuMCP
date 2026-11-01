@@ -133,6 +133,8 @@ model Project {
   description   String?
   status        ProjectStatus       @default(DRAFT)
   sourceType    String              @default("openapi_upload")
+  /// The built-in sample this project was created from (null for your own projects).
+  sample        String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   specs         ApiSpec[]

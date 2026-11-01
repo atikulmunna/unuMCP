@@ -127,6 +127,16 @@ export default function ProjectDetailPage() {
           </Badge>
         </div>
 
+        {project.sample && (
+          <div className="mt-6">
+            <Notice tone="clay" title="A sample project">
+              Claude ran the agent usability check in the tool plan below once, and it was recorded, so you
+              can review what it found and accept or reject its fixes without an API key. The rest runs live:
+              approve the tools, then generate the server and test it.
+            </Notice>
+          </div>
+        )}
+
         <div className="mt-8 grid gap-6 lg:grid-cols-[280px_1fr]">
           {/* Left rail: pipeline + provenance */}
           <div className="space-y-6 lg:sticky lg:top-20 lg:self-start">

@@ -27,7 +27,7 @@ export class ToolsService {
    * description is LLM-authored when available (P2-5, FR-013) and falls back to
    * the deterministic draft description whenever the LLM is off or errors.
    */
-  async propose(projectId: string) {
+  async propose(projectId: string, options: { useLlm?: boolean } = {}) {
     const spec = await this.prisma.apiSpec.findFirst({
       where: { projectId, validationStatus: "valid" },
       orderBy: { createdAt: "desc" },
@@ -49,7 +49,7 @@ export class ToolsService {
     // hold a DB transaction open. Descriptions are produced in batches (many tools
     // per LLM call) run with bounded concurrency (P2-6, NFR-007b); background
     // execution is P6-6. Any description the model omits falls back to the draft.
-    const { descriptions, risks } = this.llm.enabled
+    const { descriptions, risks } = (options.useLlm ?? this.llm.enabled)
       ? await this.describeBatched(projectId, drafts, endpoints)
       : { descriptions: drafts.map((d) => d.description), risks: drafts.map(() => null) };
 

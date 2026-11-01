@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Badge, Button, EmptyState, Field, Input, Notice, Spinner, Textarea } from "@/components/ui";
 import { useSession } from "@/lib/session";
@@ -9,6 +10,30 @@ import { api, ApiError } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import { cx, timeAgo } from "@/lib/format";
 import type { Project } from "@/lib/types";
+
+/** Create the sample project and open it. */
+function TrySampleButton({ onError }: { onError: (message: string) => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant="secondary"
+      loading={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const project = await api.projects.createSample();
+          router.push(`/projects/${project.id}`);
+        } catch (err) {
+          onError(err instanceof ApiError ? err.message : "Could not create the sample project.");
+          setBusy(false);
+        }
+      }}
+    >
+      Try a sample
+    </Button>
+  );
+}
 
 export default function ProjectsPage() {
   const { user, loading: sessionLoading } = useSession();
@@ -44,9 +69,12 @@ export default function ProjectsPage() {
               Each project carries one API from specification through to a packaged server.
             </p>
           </div>
-          <Button variant="primary" onClick={() => setCreating((v) => !v)}>
-            {creating ? "Close" : "New project"}
-          </Button>
+          <div className="flex gap-2">
+            <TrySampleButton onError={setError} />
+            <Button variant="primary" onClick={() => setCreating((v) => !v)}>
+              {creating ? "Close" : "New project"}
+            </Button>
+          </div>
         </div>
 
         {creating && (
@@ -82,7 +110,7 @@ export default function ProjectsPage() {
               }
             >
               Start by creating a project, then upload the OpenAPI spec for the API you want to
-              expose to agents.
+              expose to agents. Or try the sample: a small billing API, already checked by an AI agent.
             </EmptyState>
           ) : (
             <ProjectList projects={projects} />

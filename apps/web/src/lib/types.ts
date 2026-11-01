@@ -42,6 +42,8 @@ export interface Project {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  /** The built-in sample this project was created from; null for your own projects. */
+  sample: string | null;
   createdAt: string;
   updatedAt: string;
 }
