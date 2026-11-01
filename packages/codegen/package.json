@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@unumcp/analysis": "workspace:*",
     "@unumcp/openapi": "workspace:*",
     "@unumcp/schema-gen": "workspace:*"
   },

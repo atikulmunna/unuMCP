@@ -1,5 +1,5 @@
 import { jsonSchemaToZod } from "@unumcp/schema-gen";
-import type { GeneratedFile, McpToolDefinition } from "./types";
+import type { GeneratedFile, McpToolDefinition, NormalizedTool } from "./types";
 import { isReadOnly, pathExpression, toCamel, toolAnnotations, toolTitle, toPascal } from "./helpers";
 
 // One tool's generated sources: its Zod input schema and its registration.
@@ -16,7 +16,7 @@ export const ${camel}Input = ${zod};
   return { path: `src/schemas/${camel}.schema.ts`, content };
 }
 
-export function toolFile(tool: McpToolDefinition): GeneratedFile {
+export function toolFile(tool: NormalizedTool): GeneratedFile {
   const camel = toCamel(tool.name);
   const pascal = toPascal(tool.name);
   const requestParts: string[] = [];
@@ -36,7 +36,7 @@ export function toolFile(tool: McpToolDefinition): GeneratedFile {
     requestParts.length > 0
       ? `\n        options: {\n          ${requestParts.join(",\n          ")},\n        },`
       : "";
-  const meta = { name: tool.name, readOnly: isReadOnly(tool), riskLevel: tool.riskLevel };
+  const meta = { name: tool.name, readOnly: isReadOnly(tool), riskLevel: tool.riskLevel, toolset: tool.toolset };
 
   const content = `import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ${camel}Input } from "../schemas/${camel}.schema.js";

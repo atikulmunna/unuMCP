@@ -27,6 +27,11 @@ export interface McpToolDefinition {
   bodyMediaType?: string;
   authRequired: boolean;
   riskLevel: RiskLevel;
+  /**
+   * The tool's group (its endpoint's OpenAPI tag), which MCP_TOOLSETS selects
+   * by. Defaults to the first literal path segment.
+   */
+  toolset?: string;
 }
 
 export type AuthConfig =
@@ -52,6 +57,10 @@ export interface GeneratedFile {
 }
 
 /** {@link GenerateOptions} with every default filled in (internal to codegen). */
-export type NormalizedOptions = Required<Omit<GenerateOptions, "displayName">> & {
+export type NormalizedOptions = Required<Omit<GenerateOptions, "displayName" | "tools">> & {
   displayName: string;
+  tools: NormalizedTool[];
 };
+
+/** A tool with its toolset settled (internal to codegen). */
+export type NormalizedTool = McpToolDefinition & { toolset: string };

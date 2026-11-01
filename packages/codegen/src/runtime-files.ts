@@ -173,6 +173,8 @@ export interface ToolMeta {
   /** GET or HEAD: calling it cannot change anything. */
   readOnly: boolean;
   riskLevel: RiskLevel;
+  /** Its group (the API's tag); MCP_TOOLSETS selects tools by it. */
+  toolset: string;
 }
 
 /**
@@ -183,6 +185,8 @@ export interface ToolMeta {
 export interface Policy {
   /** Expose only the tools that cannot change anything. */
   readOnly: boolean;
+  /** When set, expose only the tools in these toolsets. */
+  toolsets?: ReadonlySet<string>;
   /** When set, expose only these tools. */
   enabledTools?: ReadonlySet<string>;
   /** Never expose these tools. */
@@ -212,8 +216,10 @@ export function policyFromEnv(env: Record<string, string | undefined> = process.
     );
   }
   const enabledTools = toolNames(env.MCP_ENABLED_TOOLS);
+  const toolsets = toolNames(env.MCP_TOOLSETS);
   return {
     readOnly: flag(env, "MCP_READ_ONLY"),
+    ...(toolsets ? { toolsets } : {}),
     ...(enabledTools ? { enabledTools } : {}),
     disabledTools: toolNames(env.MCP_DISABLED_TOOLS) ?? new Set(),
     dryRun: flag(env, "MCP_DRY_RUN"),
@@ -236,6 +242,7 @@ function toolNames(value: string | undefined): Set<string> | undefined {
 /** Whether the policy lets the server expose this tool. */
 export function exposes(policy: Policy, tool: ToolMeta): boolean {
   if (policy.readOnly && !tool.readOnly) return false;
+  if (policy.toolsets && !policy.toolsets.has(tool.toolset)) return false;
   if (policy.enabledTools && !policy.enabledTools.has(tool.name)) return false;
   return !policy.disabledTools.has(tool.name);
 }
@@ -246,6 +253,17 @@ export function checkToolNames(policy: Policy, known: readonly string[]): void {
   const unknown = [...(policy.enabledTools ?? []), ...policy.disabledTools].filter((name) => !names.has(name));
   if (unknown.length > 0) {
     throw new Error("MCP_ENABLED_TOOLS or MCP_DISABLED_TOOLS names no such tool: " + unknown.join(", "));
+  }
+}
+
+/** Reject toolsets that don't exist, so a misspelled one can't hide or expose the wrong tools. */
+export function checkToolsets(policy: Policy, known: readonly string[]): void {
+  const toolsets = new Set(known);
+  const unknown = [...(policy.toolsets ?? [])].filter((name) => !toolsets.has(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      "MCP_TOOLSETS names no such toolset: " + unknown.join(", ") + ". This server's toolsets: " + [...toolsets].sort().join(", "),
+    );
   }
 }
 
@@ -338,7 +356,7 @@ export function serverFile(o: NormalizedOptions): GeneratedFile {
     .join("\n");
   const content = `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ApiClient } from "./client/apiClient.js";
-import { checkToolNames, DEFAULT_POLICY, exposes, type Policy, type ToolMeta } from "./policy.js";
+import { checkToolNames, checkToolsets, DEFAULT_POLICY, exposes, type Policy, type ToolMeta } from "./policy.js";
 ${imports}
 
 type Register = (server: McpServer, client: ApiClient, policy: Policy) => void;
@@ -349,10 +367,11 @@ ${entries}
 
 /**
  * The MCP server, talking to the API through \`client\`, with the tools the
- * policy exposes. Throws when the policy names a tool that doesn't exist.
+ * policy exposes. Throws when the policy names a tool or toolset that doesn't exist.
  */
 export function createServer(client: ApiClient, policy: Policy = DEFAULT_POLICY): McpServer {
   checkToolNames(policy, TOOLS.map(([meta]) => meta.name));
+  checkToolsets(policy, TOOLS.map(([meta]) => meta.toolset));
   const server = new McpServer({ name: ${JSON.stringify(o.serverName)}, version: "0.1.0" });
   for (const [meta, register] of TOOLS) {
     if (exposes(policy, meta)) register(server, client, policy);

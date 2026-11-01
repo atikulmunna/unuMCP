@@ -1,3 +1,4 @@
+import { toolGroup } from "@unumcp/analysis";
 import type { AuthConfig, GenerateOptions, McpToolDefinition, RiskLevel } from "@unumcp/codegen";
 import type { DetectedAuth, ExtractedEndpoint, JsonSchema } from "@unumcp/openapi";
 
@@ -61,6 +62,8 @@ function toToolDefinition(t: ApprovedTool): McpToolDefinition {
       : {}),
     authRequired: e.authRequired,
     riskLevel: t.riskLevel,
+    // The same group the tool plan shows, so MCP_TOOLSETS uses the names the user saw.
+    toolset: toolGroup({ tag: e.tags[0], path: e.path }),
   };
 }
 

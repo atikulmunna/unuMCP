@@ -128,6 +128,7 @@ export function serverTestFile(o: NormalizedOptions): GeneratedFile {
       description: t.description,
       required: requiredInputs(t),
       annotations: toolAnnotations(t),
+      toolset: t.toolset,
     }));
   const readOnly = tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name);
   // With no read-only tool, read-only mode exposes nothing and there's no list to check.
@@ -158,6 +159,7 @@ const TOOLS: Array<{
   description: string;
   required: string[];
   annotations: Record<string, boolean>;
+  toolset: string;
 }> = ${JSON.stringify(tools, null, 2)};
 
 // The GET and HEAD tools, the only ones read-only mode may expose.
@@ -197,6 +199,25 @@ ${readOnlyTest}
     }
   });
 
+  it("exposes only the tools in the chosen toolsets", async () => {
+    const toolset = TOOLS[0]!.toolset;
+    const api = await connect(createServer, { status: 200, body: {} }, { policy: { toolsets: new Set([toolset]) } });
+    try {
+      const { tools } = await api.client.listTools();
+      expect(tools.map((tool) => tool.name).sort()).toEqual(
+        TOOLS.filter((tool) => tool.toolset === toolset).map((tool) => tool.name),
+      );
+    } finally {
+      await api.close();
+    }
+  });
+
+  it("refuses to start when MCP_TOOLSETS names a toolset that doesn't exist", () => {
+    const client = new ApiClient({ baseUrl: "https://example.test" });
+    const policy = { ...DEFAULT_POLICY, toolsets: new Set(["no_such_toolset"]) };
+    expect(() => createServer(client, policy)).toThrow(/no_such_toolset/);
+  });
+
   it("refuses to start when a tool list names a tool that doesn't exist", () => {
     const client = new ApiClient({ baseUrl: "https://example.test" });
     const policy = { ...DEFAULT_POLICY, disabledTools: new Set(["no_such_tool"]) };
@@ -212,11 +233,13 @@ ${readOnlyTest}
         MCP_CONFIRM_RISK: "none",
         MCP_ENABLED_TOOLS: "a, b",
         MCP_DISABLED_TOOLS: "c",
+        MCP_TOOLSETS: "issues, pulls",
       }),
     ).toEqual({
       readOnly: true,
       dryRun: true,
       confirmRisk: null,
+      toolsets: new Set(["issues", "pulls"]),
       enabledTools: new Set(["a", "b"]),
       disabledTools: new Set(["c"]),
     });

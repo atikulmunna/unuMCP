@@ -226,9 +226,28 @@ describe("generateProject: risk-aware runtime", () => {
 
   it("records what the policy needs to know about each tool", () => {
     expect(files.get("src/tools/getIssue.ts")).toContain(
-      'export const getIssueMeta: ToolMeta = {"name":"get_issue","readOnly":true,"riskLevel":"low"};',
+      'export const getIssueMeta: ToolMeta = {"name":"get_issue","readOnly":true,"riskLevel":"low","toolset":"repos"};',
     );
     expect(files.get("src/tools/deleteRepo.ts")).toContain('"readOnly":false,"riskLevel":"critical"');
+  });
+
+  it("puts each tool in a toolset: the one given, or else its first path segment", () => {
+    const withToolset = fileMap({ ...options, tools: [{ ...getIssue, toolset: "issues" }, deleteRepo] });
+    expect(withToolset.get("src/tools/getIssue.ts")).toContain('"toolset":"issues"');
+    expect(withToolset.get("src/tools/deleteRepo.ts")).toContain('"toolset":"repos"');
+    const readme = withToolset.get("README.md")!;
+    expect(readme).toContain("| `MCP_TOOLSETS` | (all) |");
+    expect(readme).toContain("This server's toolsets:\n`issues` (1 tool), `repos` (1 tool).");
+    expect(readme).toContain("Toolset: `issues`.");
+    expect(withToolset.get(".env.example")).toContain("MCP_TOOLSETS=\n");
+    expect(withToolset.get("src/policy.ts")).toContain("env.MCP_TOOLSETS");
+    expect(withToolset.get("src/server.ts")).toContain("checkToolsets(policy, TOOLS.map(([meta]) => meta.toolset));");
+  });
+
+  it("refuses a toolset name that is not snake_case", () => {
+    expect(() => generateProject({ ...options, tools: [{ ...getIssue, toolset: "Issues & PRs" }] })).toThrow(
+      /not a snake_case name/,
+    );
   });
 
   it("tests approval only for risky tools, and that dry runs hold back only tools that change data", () => {

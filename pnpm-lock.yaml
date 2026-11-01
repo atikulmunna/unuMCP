@@ -188,6 +188,9 @@ importers:
 
   packages/codegen:
     dependencies:
+      '@unumcp/analysis':
+        specifier: workspace:*
+        version: link:../analysis
       '@unumcp/openapi':
         specifier: workspace:*
         version: link:../openapi

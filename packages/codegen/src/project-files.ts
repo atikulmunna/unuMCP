@@ -60,9 +60,15 @@ export function readmeFile(o: NormalizedOptions): GeneratedFile {
     .map((t) => {
       const kind = isReadOnly(t) ? "read-only" : "can change data";
       const approval = confirmsByDefault(t) ? "; asks for approval by default" : "";
-      return `### ${t.name}\n\n${t.description}\n\nRisk: ${t.riskLevel} (${kind}${approval}).\n`;
+      return `### ${t.name}\n\n${t.description}\n\nRisk: ${t.riskLevel} (${kind}${approval}). Toolset: \`${t.toolset}\`.\n`;
     })
     .join("\n");
+  const toolsets = new Map<string, number>();
+  for (const t of o.tools) toolsets.set(t.toolset, (toolsets.get(t.toolset) ?? 0) + 1);
+  const toolsetList = [...toolsets]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => `\`${name}\` (${count} ${count === 1 ? "tool" : "tools"})`)
+    .join(", ");
   const envVar = o.auth.type === "none" ? "" : `${o.auth.envVar}=your_token_here\n`;
   const content = `# ${o.displayName}
 
@@ -114,6 +120,7 @@ at startup, so a typo never turns a control off.
 | \`MCP_READ_ONLY\` | \`false\` | \`true\` exposes only the GET and HEAD tools. |
 | \`MCP_ENABLED_TOOLS\` | (all) | Comma-separated tool names; when set, only these are exposed. |
 | \`MCP_DISABLED_TOOLS\` | (none) | Comma-separated tool names never to expose. |
+| \`MCP_TOOLSETS\` | (all) | Comma-separated toolsets (groups of tools, listed below); when set, only their tools are exposed. |
 | \`MCP_DRY_RUN\` | \`false\` | \`true\` makes tools that can change data return the request they would send, and send nothing. Reads still run. |
 | \`MCP_CONFIRM_RISK\` | \`${DEFAULT_CONFIRM_RISK}\` | Ask the user to approve a call at or above this risk (\`low\`, \`medium\`, \`high\`, \`critical\`), or \`none\`. |
 
@@ -122,6 +129,9 @@ the exact request. A client without elicitation support can't ask, so those
 tools refuse to run there unless \`MCP_CONFIRM_RISK\` allows them. Each tool
 also carries MCP behavior hints (\`readOnlyHint\`, \`destructiveHint\`,
 \`idempotentHint\`) that clients can use for their own prompts.
+
+Toolsets group the tools by the API's own sections. This server's toolsets:
+${toolsetList}.
 
 ## Available Tools
 
@@ -143,6 +153,7 @@ export function envExampleFile(o: NormalizedOptions): GeneratedFile {
     "MCP_READ_ONLY=false",
     "MCP_ENABLED_TOOLS=",
     "MCP_DISABLED_TOOLS=",
+    "MCP_TOOLSETS=",
     "MCP_DRY_RUN=false",
     `MCP_CONFIRM_RISK=${DEFAULT_CONFIRM_RISK}`,
   );
