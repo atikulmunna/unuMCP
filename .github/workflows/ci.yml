@@ -55,3 +55,21 @@ jobs:
       # (the db + api suites read it); strict mode would strip it.
       - name: Test
         run: pnpm exec turbo run test --env-mode=loose
+
+      # A production build of the web app driven in Chromium against the real
+      # API and Postgres (apps/web/playwright.config.ts starts both).
+      - name: Install Chromium for the browser smoke test
+        run: pnpm --filter @unumcp/web exec playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: pnpm --filter @unumcp/web e2e
+
+      - name: Upload the browser test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7
