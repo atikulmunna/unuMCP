@@ -9,6 +9,12 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**"]
     },
+    "@unumcp/db#typecheck": {
+      "dependsOn": ["build"]
+    },
+    "@unumcp/db#test": {
+      "dependsOn": ["build"]
+    },
     "typecheck": {
       "dependsOn": ["^build"]
     },
