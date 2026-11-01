@@ -10,11 +10,16 @@
 #     logs      tail the API/web/tunnel service logs (via SSM)
 #     ssh       open an SSM shell on the box (no keys/ports)
 #     harden    set IMDS hop limit 1 on an existing box (containers can't read user-data)
-#     teardown  terminate the instance and delete the SG + IAM role
+#     enable-backups  create the S3 backup bucket and turn on nightly backups on the box
+#     backup    back up the database to S3 now (via SSM)
+#     backups   list the database backups in S3
+#     teardown  terminate the instance and delete the SG + IAM role (backups are kept)
 set -euo pipefail
 REGION="${AWS_REGION:-us-east-1}"
 NAME=unumcp; ROLE=unumcp-ssm-role; SG=unumcp-sg
 aws() { command aws --region "$REGION" "$@"; }
+# shellcheck source=deploy/backup-bucket.sh
+. "$(dirname "${BASH_SOURCE[0]}")/backup-bucket.sh"
 
 iid() {
   aws ec2 describe-instances \
@@ -62,6 +67,11 @@ case "${1:-}" in
     aws ec2 modify-instance-metadata-options --instance-id "$(iid)" \
       --http-tokens required --http-put-response-hop-limit 1 --http-endpoint enabled >/dev/null
     echo "IMDS hop limit set to 1 (IMDSv2 required)." ;;
+  enable-backups)
+    bucket="$(ensure_backup_bucket)"
+    run_ssm "bash /opt/unumcp/deploy/install-backups.sh $bucket $REGION" ;;
+  backup)  run_ssm "systemctl start unumcp-backup.service && journalctl -u unumcp-backup.service --no-pager -n 1 -o cat" ;;
+  backups) aws s3 ls "s3://$(backup_bucket_name)/postgres/" ;;
   teardown)
     id="$(iid)"
     aws ec2 terminate-instances --instance-ids "$id" >/dev/null
@@ -70,7 +80,8 @@ case "${1:-}" in
     aws iam remove-role-from-instance-profile --instance-profile-name "$ROLE" --role-name "$ROLE" 2>/dev/null || true
     aws iam delete-instance-profile --instance-profile-name "$ROLE" 2>/dev/null || true
     aws iam detach-role-policy --role-name "$ROLE" --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore 2>/dev/null || true
+    aws iam delete-role-policy --role-name "$ROLE" --policy-name unumcp-backups 2>/dev/null || true
     aws iam delete-role --role-name "$ROLE" 2>/dev/null || true
     echo "Torn down." ;;
-  *) grep -E '^#|url|start|stop|status|bootlog|logs|ssh|harden|teardown' "$0" | sed -n '2,13p' ;;
+  *) sed -n '2,/^set /{/^#/p}' "$0" ;;
 esac

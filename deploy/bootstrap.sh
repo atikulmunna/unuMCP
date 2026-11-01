@@ -107,4 +107,9 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now unumcp-api unumcp-web unumcp-tunnel
+
+# 9. Nightly database backups to S3 (provision.sh passes the bucket).
+if [ -n "${BACKUP_BUCKET:-}" ]; then
+  bash "$APP/deploy/install-backups.sh" "$BACKUP_BUCKET" "${AWS_REGION:-us-east-1}"
+fi
 echo "unuMCP bootstrap finished: $(date -u)"

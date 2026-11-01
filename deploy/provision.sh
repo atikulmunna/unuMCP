@@ -45,6 +45,12 @@ if ! aws iam get-role --role-name "$ROLE" >/dev/null 2>&1; then
   say "Waiting for the instance profile to propagate..."; sleep 15
 fi
 
+# --- S3 bucket for nightly database backups (the role may write, never delete) ---
+# shellcheck source=deploy/backup-bucket.sh
+. "$ROOT/deploy/backup-bucket.sh"
+BACKUP_BUCKET="$(ensure_backup_bucket)"
+say "Backup bucket: $BACKUP_BUCKET"
+
 # --- security group: no inbound, egress all (default) ---
 VPC="$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)"
 SUBNET="$(aws ec2 describe-subnets --filters Name=default-for-az,Values=true --query 'Subnets[0].SubnetId' --output text)"
@@ -62,6 +68,7 @@ USERDATA="$(mktemp)"; trap 'rm -f "$USERDATA"' EXIT
   echo '#!/bin/bash'
   echo "export JWT_SECRET='$JWT_SECRET'"
   echo "export DB_PASSWORD='$DB_PASSWORD'"
+  echo "export BACKUP_BUCKET='$BACKUP_BUCKET' AWS_REGION='$REGION'"
   tail -n +2 "$ROOT/deploy/bootstrap.sh"
 } > "$USERDATA"
 

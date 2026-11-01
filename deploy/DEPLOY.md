@@ -11,7 +11,8 @@ inline job queue, Cloudflare quick tunnel) rides along; the LLM stays off on the
 | --- | --- |
 | EC2 instance | `t4g.small` (ARM, 2 vCPU, 2 GB) + 4 GB swap, 20 GB gp3, Amazon Linux 2023 |
 | Security group | `unumcp-sg`: **no inbound rules** (access is via SSM + the tunnel, both outbound) |
-| IAM role | `unumcp-ssm-role`: `AmazonSSMManagedInstanceCore` (Session Manager; no SSH keys) |
+| IAM role | `unumcp-ssm-role`: `AmazonSSMManagedInstanceCore` (Session Manager; no SSH keys), plus write and read (not delete) on the backup bucket |
+| S3 bucket | `unumcp-backups-<account>-<region>`: private, nightly database backups kept 30 days |
 | Runtime | Postgres 16 container + API + Web + `cloudflared` quick tunnel, all as systemd services |
 
 Access is a free `https://<random>.trycloudflare.com` URL (no Cloudflare account needed).
@@ -69,16 +70,44 @@ cd /opt/unumcp && git pull && pnpm install \
   && sudo systemctl restart unumcp-api unumcp-web
 ```
 
-## 4. Tear down (stops all billing)
+## 4. Backups
+
+The box dumps the database (`pg_dump`, custom format) to the S3 bucket every night, and at
+the next start when it was stopped at backup time. Backups expire after 30 days. The box can
+write and read them but not delete them.
+
+```bash
+bash deploy/manage.sh backups          # list them
+bash deploy/manage.sh backup           # take one now
+bash deploy/manage.sh enable-backups   # on a box provisioned before backups existed
+```
+
+To restore one (it replaces the current data):
+
+```bash
+bash deploy/manage.sh ssh
+# on the box, with a file name from `manage.sh backups`:
+sudo systemctl stop unumcp-api
+. /etc/unumcp-backup.env
+aws s3 cp "s3://$BACKUP_BUCKET/postgres/<file>.dump" /var/tmp/restore.dump
+docker exec -i unumcp-pg pg_restore -U unumcp -d unumcp --clean --if-exists < /var/tmp/restore.dump
+rm /var/tmp/restore.dump && sudo systemctl start unumcp-api
+```
+
+## 5. Tear down (stops all billing)
 
 ```bash
 bash deploy/manage.sh teardown  # terminates the instance, deletes the SG + IAM role
 ```
 
+The backup bucket is kept, so the data survives a teardown. To delete it too:
+`aws s3 rb s3://unumcp-backups-<account>-<region> --force`.
+
 ## Cost (on-demand)
 
 - Running: **~$0.017/hr**, so an hour-long demo is under 2 cents.
 - Stopped (ready to start in ~30s): **~$1.60/mo** (the 20 GB gp3 volume only).
+- Backups: cents per month (S3 Standard, a few MB per dump, 30 days kept).
 - For **near-zero** cost between demo seasons: `teardown` (deletes the volume) and re-run
   `provision.sh` when you need it again (one command, ~10 min). Nothing bills while torn down.
 
