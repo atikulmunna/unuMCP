@@ -40,7 +40,22 @@ export function generateProject(options: GenerateOptions): GeneratedFile[] {
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/** Tool names become TypeScript identifiers and file names. */
+const SAFE_TOOL_NAME = /^[a-z][a-z0-9_]*$/;
+
+/**
+ * Refuse input that could change the generated project's meaning. Callers
+ * validate both already; this backstop covers data stored before they did.
+ */
+function assertSafe(o: GenerateOptions): void {
+  const unsafe = o.tools.find((t) => !SAFE_TOOL_NAME.test(t.name));
+  if (unsafe) throw new Error(`Tool name ${JSON.stringify(unsafe.name)} is not a snake_case identifier.`);
+  // The base URL goes into .env.example and the README as plain text.
+  if (/[\s\p{Cc}]/u.test(o.baseUrl)) throw new Error("The base URL contains spaces or line breaks.");
+}
+
 function normalize(o: GenerateOptions): NormalizedOptions {
+  assertSafe(o);
   return {
     serverName: o.serverName,
     displayName: o.displayName ?? o.serverName,

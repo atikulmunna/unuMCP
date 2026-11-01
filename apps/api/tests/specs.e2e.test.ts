@@ -231,6 +231,19 @@ describe("spec upload pipeline (P1-7/8/9)", () => {
     ]);
   });
 
+  it("refuses a file name with folders in it", async () => {
+    const token = await makeUser("folders");
+    const projectId = await makeProject(token);
+    for (const filename of ["../../other-project/spec.json", "sub\\spec.yaml"]) {
+      const res = await request(app.getHttpServer())
+        .post(`/projects/${projectId}/spec/upload`)
+        .set({ Authorization: `Bearer ${token}` })
+        .send({ filename, content: validSpec });
+      expect(res.status).toBe(400);
+      expect(res.body.errors.fieldErrors.filename).toEqual(["Use a plain file name, without folders."]);
+    }
+  });
+
   it("enforces ownership on spec routes (404 for non-owner)", async () => {
     const owner = await makeUser("owner");
     const other = await makeUser("other");

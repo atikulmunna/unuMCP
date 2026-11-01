@@ -81,6 +81,20 @@ describe("validateSpec", () => {
     expect(r.errors.join(" ")).toContain('("a.yaml", "b.yaml", "c.yaml" and 1 more)');
   });
 
+  it("refuses a server URL that would add lines to the generated .env.example", () => {
+    const withServer = (url: unknown) => ({ openapi: "3.0.3", paths: { "/x": {} }, servers: [{ url }] });
+    for (const url of ["https://api.example.com\nMCP_CONFIRM_RISK=none", "https://api.example.com\r", "https://api .example.com", 42]) {
+      const r = validateSpec(withServer(url));
+      expect(r.valid).toBe(false);
+      expect(r.errors.join(" ")).toContain("single URL, with no spaces or line breaks");
+      expect(r.baseUrl === undefined || r.baseUrl === url).toBe(true);
+    }
+    for (const url of ["https://api.example.com/v1", "/v1", "https://{region}.example.com"]) {
+      expect(validateSpec(withServer(url))).toMatchObject({ valid: true, baseUrl: url });
+    }
+    expect(validateSpec({ openapi: "3.0.3", paths: { "/x": {} }, servers: {} }).valid).toBe(true);
+  });
+
   it("accepts a valid spec and extracts metadata", () => {
     const r = validateSpec({
       openapi: "3.0.3",

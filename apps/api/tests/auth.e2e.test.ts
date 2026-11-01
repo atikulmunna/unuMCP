@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../src/app.module";
@@ -89,6 +90,15 @@ describe("auth (P1-4)", () => {
     const me = await request(app.getHttpServer()).get("/auth/me").set("Authorization", `Bearer ${token}`);
     expect(me.status).toBe(200);
     expect(me.body.email).toBe(email);
+  });
+
+  it("accepts only HS256 tokens, even when another algorithm is signed with the right secret", async () => {
+    const email = uniqueEmail("alg");
+    const reg = await request(app.getHttpServer()).post("/auth/register").send({ email, password: "password123" });
+    const { sub } = new JwtService().decode(reg.body.accessToken) as { sub: string };
+    const hs384 = new JwtService({ secret: process.env.JWT_SECRET }).sign({ sub, email }, { algorithm: "HS384" });
+    const me = await request(app.getHttpServer()).get("/auth/me").set("Authorization", `Bearer ${hs384}`);
+    expect(me.status).toBe(401);
   });
 });
 

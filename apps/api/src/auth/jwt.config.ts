@@ -1,6 +1,9 @@
 /** HS256 needs a key of at least 256 bits (RFC 7518 §3.2): 32 characters. */
 export const MIN_JWT_SECRET_LENGTH = 32;
 
+/** The only algorithm tokens are signed with, and so the only one accepted. */
+export const JWT_ALGORITHM = "HS256";
+
 /**
  * The JWT signing secret from env. There is deliberately no fallback: a default
  * secret would let anyone forge a token for any user, so a missing or weak

@@ -70,7 +70,12 @@ export function validateSpec(doc: Record<string, unknown>): SpecValidation {
   }
 
   const info = doc.info as Record<string, unknown> | undefined;
-  const servers = doc.servers as Array<{ url?: string }> | undefined;
+  const baseUrl = Array.isArray(doc.servers) ? (doc.servers[0] as { url?: unknown } | undefined)?.url : undefined;
+  // The base URL is written into the generated server's .env.example and README,
+  // so a line break in it would add lines of the spec author's choosing there.
+  if (baseUrl !== undefined && (typeof baseUrl !== "string" || /[\s\p{Cc}]/u.test(baseUrl))) {
+    errors.push("The first server URL must be a single URL, with no spaces or line breaks.");
+  }
 
   return {
     valid: errors.length === 0,
@@ -78,7 +83,7 @@ export function validateSpec(doc: Record<string, unknown>): SpecValidation {
     openapiVersion,
     title: info?.title as string | undefined,
     version: info?.version as string | undefined,
-    baseUrl: servers?.[0]?.url,
+    baseUrl: typeof baseUrl === "string" ? baseUrl : undefined,
   };
 }
 

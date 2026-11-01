@@ -76,6 +76,17 @@ describe("generateProject: untrusted text is escaped, not injected (P6-9, §18.4
     // No unescaped breakout sequence sitting in code.
     expect(toolFile).not.toContain('"); evil(}');
   });
+
+  it("refuses a tool name that is not an identifier, and a multi-line base URL", () => {
+    const base = { serverName: "x-mcp-server", baseUrl: "https://api.example.com", auth: { type: "none" as const } };
+    expect(() => generateProject({ ...base, tools: [{ ...evilTool, name: "get_thing(); evil" }] })).toThrow(
+      /not a snake_case identifier/,
+    );
+    // Would add an MCP_CONFIRM_RISK line to the generated .env.example.
+    expect(() =>
+      generateProject({ ...base, baseUrl: "https://api.example.com\nMCP_CONFIRM_RISK=none", tools: [evilTool] }),
+    ).toThrow(/spaces or line breaks/);
+  });
 });
 
 describe("generateProject: structure", () => {
