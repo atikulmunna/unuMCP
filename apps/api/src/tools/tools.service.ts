@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { dereferenceSpec, detectAuth, extractEndpoints, toCycleSafe } from "@unumcp/openapi";
 import type { DetectedAuth, ExtractedEndpoint } from "@unumcp/openapi";
-import { isHighRisk, maxRisk, proposeTools } from "@unumcp/analysis";
+import { isHighRisk, maxRisk, proposeTools, toolGroup } from "@unumcp/analysis";
 import type { ToolDraft } from "@unumcp/analysis";
 import { Prisma } from "@unumcp/db";
 import { detectPromptInjection } from "@unumcp/security-scan";
@@ -11,6 +11,7 @@ import { LlmService } from "../llm/llm.service";
 import { chunk, mapWithConcurrency } from "../common/concurrency";
 import { proposalConfigFromEnv } from "./proposal.config";
 import type { UpdateToolInput } from "./schemas";
+import { REVIEW_STATUSES } from "./review";
 
 const MUTATING = new Set(["create", "update", "delete", "upload"]);
 
@@ -159,20 +160,38 @@ export class ToolsService {
   }
 
   /** List candidates with endpoint mapping + risk for the review UI (P2-10, NFR-009). */
-  list(projectId: string) {
-    return this.prisma.toolCandidate.findMany({
+  /** The project's tools, each with its group (its endpoint's tag; see toolGroup). */
+  async list(projectId: string) {
+    const tools = await this.prisma.toolCandidate.findMany({
       where: { projectId },
       include: {
         endpoints: {
           include: {
             endpoint: {
-              select: { method: true, path: true, operationId: true },
+              select: { method: true, path: true, operationId: true, tag: true },
             },
           },
         },
       },
       orderBy: { createdAt: "asc" },
     });
+    return tools.map((t) => ({ ...t, group: t.endpoints[0] ? toolGroup(t.endpoints[0].endpoint) : "other" }));
+  }
+
+  /**
+   * Turn a whole group of tools on or off. Turning a group on leaves its high
+   * and critical risk tools off: those are turned on one at a time.
+   */
+  async setGroupEnabled(projectId: string, group: string, enabled: boolean) {
+    const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { status: true } });
+    if (!REVIEW_STATUSES.includes(project.status)) {
+      throw new ConflictException("Tools can be turned on or off only while the tool plan is under review.");
+    }
+    const members = (await this.list(projectId)).filter((t) => t.group === group);
+    if (members.length === 0) throw new NotFoundException(`No tools in the group "${group}".`);
+    const ids = members.filter((t) => !enabled || !isHighRisk(t.riskLevel)).map((t) => t.id);
+    await this.prisma.toolCandidate.updateMany({ where: { projectId, id: { in: ids } }, data: { enabled } });
+    return this.list(projectId);
   }
 
   async updateTool(projectId: string, toolId: string, data: UpdateToolInput) {

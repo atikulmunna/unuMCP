@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type { UsabilityTool } from "@unumcp/usability";
-import { Prisma, type ProjectStatus } from "@unumcp/db";
+import { Prisma } from "@unumcp/db";
 import { detectPromptInjection, redactSecrets } from "@unumcp/security-scan";
 import { PrismaService } from "../prisma/prisma.service";
 import { LlmService } from "../llm/llm.service";
@@ -8,9 +8,8 @@ import { estimateCostUsd } from "../llm/llm-pricing";
 import { ToolsService } from "../tools/tools.service";
 import type { UsabilityConfig } from "./usability.config";
 import { runUsabilityCheck, type CheckResult, type Meter } from "./usability-check";
+import { REVIEW_STATUSES } from "../tools/review";
 
-/** A check and its fixes can only act on a tool plan that is still under review. */
-export const REVIEW_STATUSES: readonly ProjectStatus[] = ["TOOLS_PROPOSED", "AWAITING_USER_APPROVAL"];
 
 export interface CheckSummary {
   runId: string;

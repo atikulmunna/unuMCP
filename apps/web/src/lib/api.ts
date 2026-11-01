@@ -154,6 +154,11 @@ export const api = {
     list: (projectId: string) => request<ToolCandidate[]>(`/projects/${projectId}/tools`),
     propose: (projectId: string) =>
       request<ToolCandidate[]>(`/projects/${projectId}/tools/propose`, { method: "POST" }),
+    setGroup: (projectId: string, group: string, enabled: boolean) =>
+      request<ToolCandidate[]>(`/projects/${projectId}/tools/groups/${encodeURIComponent(group)}`, {
+        method: "POST",
+        body: { enabled },
+      }),
     setEnabled: (projectId: string, toolId: string, enabled: boolean) =>
       request<ToolCandidate>(`/projects/${projectId}/tools/${toolId}`, {
         method: "PATCH",

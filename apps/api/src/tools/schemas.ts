@@ -14,3 +14,7 @@ export const updateToolSchema = z
   .refine((d) => Object.keys(d).length > 0, "No fields to update");
 
 export type UpdateToolInput = z.infer<typeof updateToolSchema>;
+
+export const setGroupSchema = z.object({ enabled: z.boolean() });
+
+export type SetGroupInput = z.infer<typeof setGroupSchema>;

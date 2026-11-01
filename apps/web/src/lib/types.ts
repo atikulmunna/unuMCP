@@ -86,6 +86,8 @@ export interface ToolCandidate {
   approved: boolean;
   riskLevel: RiskLevel;
   createdBy: "agent" | "user";
+  /** Its endpoint's OpenAPI tag (or first path segment), as a snake_case name. */
+  group: string;
   endpoints: ToolEndpointRef[];
 }
 

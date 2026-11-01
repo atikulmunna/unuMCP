@@ -5,7 +5,7 @@ import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/jwt.strategy";
 import { ProjectOwnershipGuard } from "../common/project-ownership.guard";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { updateToolSchema, type UpdateToolInput } from "./schemas";
+import { setGroupSchema, updateToolSchema, type SetGroupInput, type UpdateToolInput } from "./schemas";
 
 @Controller("projects/:projectId/tools")
 @UseGuards(JwtAuthGuard, ProjectOwnershipGuard)
@@ -29,6 +29,17 @@ export class ToolsController {
     @Body(new ZodValidationPipe(updateToolSchema)) body: UpdateToolInput,
   ) {
     return this.tools.updateTool(projectId, toolId, body);
+  }
+
+  /** Turn a group of tools on (its high and critical ones stay off) or off. */
+  @Post("groups/:group")
+  @HttpCode(200)
+  setGroup(
+    @Param("projectId") projectId: string,
+    @Param("group") group: string,
+    @Body(new ZodValidationPipe(setGroupSchema)) body: SetGroupInput,
+  ) {
+    return this.tools.setGroupEnabled(projectId, group, body.enabled);
   }
 
   @Post("approve")

@@ -1,9 +1,11 @@
 "use client";
 
-import { Badge, Button, Notice, Panel } from "@/components/ui";
+import { useState } from "react";
+import { Badge, Button, Input, Notice, Panel } from "@/components/ui";
 import { api } from "@/lib/api";
 import { primaryAction, riskTone } from "@/lib/status";
 import { cx, pluralize } from "@/lib/format";
+import { groupTools, LONG_LIST, showGrouped } from "@/lib/tools";
 import type { ToolCandidate } from "@/lib/types";
 import { useAction, type StageProps } from "./shared";
 import { UsabilityPanel } from "./UsabilityPanel";
@@ -46,6 +48,16 @@ export function ToolsCard({
     );
   }
 
+  const row = (tool: ToolCandidate, first: boolean) => (
+    <ToolRow
+      key={tool.id}
+      tool={tool}
+      first={first}
+      disabled={locked || action.busy}
+      onToggle={(next) => action.run(() => api.tools.setEnabled(project.id, tool.id, next))}
+    />
+  );
+
   return (
     <Panel
       eyebrow="Stage 2"
@@ -62,40 +74,18 @@ export function ToolsCard({
       }
       bodyClassName="p-0"
     >
-      <ul>
-        {tools.map((tool, i) => (
-          <li
-            key={tool.id}
-            className={cx(
-              "flex items-start gap-3 px-5 py-3.5",
-              i > 0 && "border-t border-line",
-              !tool.enabled && "opacity-55",
-            )}
-          >
-            <Toggle
-              checked={tool.enabled}
-              disabled={locked || action.busy}
-              onChange={(next) => action.run(() => api.tools.setEnabled(project.id, tool.id, next))}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="font-mono text-sm font-medium text-ink">{tool.name}</code>
-                <Badge tone={riskTone(tool.riskLevel)} dot={false}>
-                  {tool.riskLevel}
-                </Badge>
-                {tool.approved && <Badge tone="ok">approved</Badge>}
-              </div>
-              <p className="mt-0.5 text-sm text-ink-muted">{tool.description}</p>
-              {tool.endpoints[0] && (
-                <p className="mt-1 font-mono text-2xs text-ink-faint">
-                  <span className="text-clay">{tool.endpoints[0].endpoint.method}</span>{" "}
-                  {tool.endpoints[0].endpoint.path}
-                </p>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+      {showGrouped(tools) ? (
+        <GroupedTools
+          tools={tools}
+          locked={locked}
+          busy={action.busy}
+          enabledCount={enabledCount}
+          row={row}
+          onToggleGroup={(group, enabled) => action.run(() => api.tools.setGroup(project.id, group, enabled))}
+        />
+      ) : (
+        <ul>{tools.map((tool, i) => row(tool, i === 0))}</ul>
+      )}
 
       <UsabilityPanel project={project} reload={reload} />
 
@@ -120,6 +110,141 @@ export function ToolsCard({
         </div>
       )}
     </Panel>
+  );
+}
+
+/**
+ * A long plan, by group (the endpoints' tags): a search across all tools, and
+ * per group its count, a way to turn it on or off, and its tools when opened.
+ */
+function GroupedTools({
+  tools,
+  locked,
+  busy,
+  enabledCount,
+  row,
+  onToggleGroup,
+}: {
+  tools: ToolCandidate[];
+  locked: boolean;
+  busy: boolean;
+  enabledCount: number;
+  row: (tool: ToolCandidate, first: boolean) => React.ReactNode;
+  onToggleGroup: (group: string, enabled: boolean) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const groups = groupTools(tools, query);
+  const searching = query.trim().length > 0;
+  const toggleOpen = (name: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+  return (
+    <div>
+      <div className="border-b border-line px-5 py-3">
+        <Input
+          type="search"
+          aria-label="Search tools"
+          placeholder={`Search ${tools.length} tools by name, group, description or path`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {!locked && enabledCount > LONG_LIST && (
+          <p className="mt-2 text-xs text-ink-muted">
+            {enabledCount} tools are on. Agents choose less reliably from a long list, so keep only the
+            groups this server needs.
+          </p>
+        )}
+      </div>
+      {groups.length === 0 && <p className="px-5 py-4 text-sm text-ink-muted">No tools match that search.</p>}
+      <ul>
+        {groups.map((group, i) => {
+          const expanded = searching || open.has(group.name);
+          return (
+            <li key={group.name} className={cx(i > 0 && "border-t border-line")}>
+              <div className="flex flex-wrap items-center gap-2 px-5 py-3">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => toggleOpen(group.name)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <span aria-hidden className="w-3 font-mono text-xs text-ink-faint">
+                    {expanded ? "▾" : "▸"}
+                  </span>
+                  <code className="font-mono text-sm font-medium text-ink">{group.name}</code>
+                  <span className="font-mono text-2xs text-ink-faint">
+                    {group.enabled} of {group.total} on
+                  </span>
+                </button>
+                {!locked && (
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || group.canTurnOn === 0}
+                      title="Turns on its low and medium risk tools. High and critical ones stay off until you turn them on."
+                      onClick={() => onToggleGroup(group.name, true)}
+                    >
+                      Turn on
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy || group.enabled === 0}
+                      onClick={() => onToggleGroup(group.name, false)}
+                    >
+                      Turn off
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {expanded && (
+                <ul className="border-t border-line">{group.tools.map((tool, j) => row(tool, j === 0))}</ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function ToolRow({
+  tool,
+  first,
+  disabled,
+  onToggle,
+}: {
+  tool: ToolCandidate;
+  first: boolean;
+  disabled: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <li className={cx("flex items-start gap-3 px-5 py-3.5", !first && "border-t border-line", !tool.enabled && "opacity-55")}>
+      <Toggle checked={tool.enabled} disabled={disabled} onChange={onToggle} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="font-mono text-sm font-medium text-ink">{tool.name}</code>
+          <Badge tone={riskTone(tool.riskLevel)} dot={false}>
+            {tool.riskLevel}
+          </Badge>
+          {tool.approved && <Badge tone="ok">approved</Badge>}
+        </div>
+        <p className="mt-0.5 text-sm text-ink-muted">{tool.description}</p>
+        {tool.endpoints[0] && (
+          <p className="mt-1 font-mono text-2xs text-ink-faint">
+            <span className="text-clay">{tool.endpoints[0].endpoint.method}</span> {tool.endpoints[0].endpoint.path}
+          </p>
+        )}
+      </div>
+    </li>
   );
 }
 
