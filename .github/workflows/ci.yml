@@ -42,8 +42,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Apply database schema
-        run: pnpm --filter @unumcp/db exec prisma db push
+      - name: Apply database migrations
+        run: pnpm --filter @unumcp/db exec prisma migrate deploy
+
+      # The migrated database must match schema.prisma exactly: a schema change
+      # without a migration (`prisma migrate dev --name ...`) fails here.
+      - name: Check the migrations match the schema
+        run: pnpm --filter @unumcp/db exec prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
 
       - name: Lint
         run: pnpm lint

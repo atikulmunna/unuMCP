@@ -53,7 +53,7 @@ cd "$APP"
 export NEXT_TELEMETRY_DISABLED=1 CI=true HOME="${HOME:-/root}"
 pnpm install --frozen-lockfile
 until docker exec unumcp-pg pg_isready -U unumcp; do sleep 2; done
-( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma db push )
+( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma migrate deploy )
 # The API and its workspace packages compile to JavaScript (dist/); building the
 # db package also regenerates the Prisma client.
 pnpm exec turbo run build --filter=@unumcp/api...

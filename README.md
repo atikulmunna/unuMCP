@@ -126,7 +126,7 @@ cp .env.example apps/api/.env
 #   The Prisma CLI reads DATABASE_URL from the environment (NOT apps/api/.env;
 #   see packages/db/prisma.config.ts), so pass it for the docker-compose database:
 DATABASE_URL=postgresql://unumcp:unumcp@localhost:5433/unumcp \
-  pnpm --filter @unumcp/db exec prisma db push        # or: prisma migrate dev
+  pnpm --filter @unumcp/db exec prisma migrate deploy
 
 # 5. Run the backend (http://localhost:3001/api)
 pnpm --filter @unumcp/api dev
@@ -208,7 +208,8 @@ pnpm exec turbo run typecheck test build --filter=@unumcp/web
 
 Notes:
 
-- **The API test suite needs a Postgres with the schema applied** (it exercises real Prisma against `DATABASE_URL`). Bring up `docker compose` and run `prisma db push` first.
+- **The API test suite needs a Postgres with the schema applied** (it exercises real Prisma against `DATABASE_URL`). Bring up `docker compose` and run `prisma migrate deploy` first.
+- **Schema changes need a migration.** After editing `packages/db/prisma/schema.prisma`, run `pnpm --filter @unumcp/db exec prisma migrate dev --name <what-changed>` and commit the new folder under `prisma/migrations/`. CI applies the migrations to an empty database and fails if the result differs from the schema.
 - The **browser smoke test** (`pnpm --filter @unumcp/web e2e`, Playwright, runs in CI) builds the web app for production, starts it and the API on ports 3100 and 3101, and drives Chromium through sign-up, a new project, a spec upload and a tool plan. It also checks the stylesheets and web fonts load. It needs the same Postgres; run `pnpm --filter @unumcp/web exec playwright install chromium` once.
 - The **real-Redis queue round-trip** test is opt-in: it only runs when `REDIS_URL` is set (the default suite runs jobs inline).
 - The **real Docker sandbox** is covered by an opt-in suite: `RUN_SANDBOX_DOCKER_TESTS=1 pnpm --filter @unumcp/api exec vitest run tests/sandbox.security.e2e.test.ts` proves, from inside a container, that there is no network, no root, and no write access to the project or the image, plus timeout cleanup and log redaction. Other unit/e2e tests use an injectable fake sandbox so they don't require Docker. The first real run builds the sandbox image (`pnpm --filter @unumcp/sandbox build-image` pre-builds it).

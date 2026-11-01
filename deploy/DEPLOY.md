@@ -31,7 +31,7 @@ bash deploy/provision.sh
 ```
 
 Launches the box and hands it a self-contained bootstrap (installs Docker/Node/pnpm/
-cloudflared, clones the repo, writes `.env`, `pnpm install`, `prisma db push`, builds the
+cloudflared, clones the repo, writes `.env`, `pnpm install`, `prisma migrate deploy`, builds the
 web and the sandbox image, starts all services). **First boot takes ~8-10 min.**
 
 ```bash
@@ -54,7 +54,7 @@ prints the current one. Want a stable URL? See "Stable URL" below.
 
 ## 3. Redeploy after pushing code
 
-`db push` applies any schema changes, reading `DATABASE_URL` from the API's `.env`. The
+`migrate deploy` applies any new migrations, reading `DATABASE_URL` from the API's `.env`. The
 `turbo` build compiles the API and its packages to JavaScript and regenerates the Prisma
 client; the API service runs that build (`node -C unumcp-dist dist/main.js`).
 
@@ -63,7 +63,7 @@ bash deploy/manage.sh ssh
 # on the box:
 cd /opt/unumcp && git pull && pnpm install \
   && pnpm exec turbo run build --filter=@unumcp/api... \
-  && (cd packages/db && set -a && . ../../apps/api/.env && set +a && pnpm exec prisma db push) \
+  && (cd packages/db && set -a && . ../../apps/api/.env && set +a && pnpm exec prisma migrate deploy) \
   && (cd apps/web && pnpm build) \
   && pnpm --filter @unumcp/sandbox build-image \
   && sudo systemctl restart unumcp-api unumcp-web
