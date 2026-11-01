@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "node --watch --env-file=.env -r @swc-node/register src/main.ts",
-    "start": "node --env-file=.env -r @swc-node/register src/main.ts",
+    "build": "node ../../scripts/swc-build.mjs cjs",
+    "start": "node -C unumcp-dist --env-file=.env dist/main.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

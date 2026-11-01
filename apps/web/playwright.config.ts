@@ -16,7 +16,8 @@ export default defineConfig({
   use: { ...devices["Desktop Chrome"], baseURL: `http://localhost:${WEB_PORT}`, trace: "retain-on-failure" },
   webServer: [
     {
-      command: "node -r @swc-node/register src/main.ts",
+      // The compiled API, as production runs it (built with its packages first).
+      command: "pnpm exec turbo run build --filter=@unumcp/api... && node -C unumcp-dist dist/main.js",
       cwd: "../api",
       // 401 means the API is up.
       url: `http://localhost:${API_PORT}/api/auth/me`,

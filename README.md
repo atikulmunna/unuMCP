@@ -176,11 +176,12 @@ The **web** app honours `API_URL` (default `http://localhost:3001`) for the Next
 **Backend.** Start it with the workspace script:
 
 ```bash
-pnpm --filter @unumcp/api dev     # watch mode
-pnpm --filter @unumcp/api start   # one-shot
+pnpm --filter @unumcp/api dev                     # watch mode, straight from TypeScript
+pnpm exec turbo run build --filter=@unumcp/api... # compile the API and its packages
+pnpm --filter @unumcp/api start                   # run the compiled build (as production does)
 ```
 
-> ⚠️ The API scripts run under `node -r @swc-node/register`, **not** `tsx`. NestJS needs `emitDecoratorMetadata` for constructor DI; SWC emits it, esbuild/tsx does not. Don't "simplify" these scripts to `tsx`.
+> ⚠️ `dev` runs under `node -r @swc-node/register`, **not** `tsx`: NestJS needs `emitDecoratorMetadata` for constructor DI, and SWC emits it while esbuild/tsx does not. The build (`scripts/swc-build.mjs`) uses the same SWC transform, writing each package's `dist/`; `start` runs it with `node -C unumcp-dist`, the export condition that points the workspace packages at their `dist/` instead of their TypeScript source.
 
 **Dashboard.** Start the API first (it needs Postgres), then:
 

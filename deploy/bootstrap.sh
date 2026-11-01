@@ -47,12 +47,16 @@ JWT_SECRET=$JWT_SECRET
 PORT=3001
 EOF
 
-# 7. Install, migrate, build the web.
+# 7. Install, migrate, build the API and the web.
 cd "$APP"
-export NEXT_TELEMETRY_DISABLED=1 CI=true
+# User-data may run without HOME; SWC needs one to cache its native addon.
+export NEXT_TELEMETRY_DISABLED=1 CI=true HOME="${HOME:-/root}"
 pnpm install --frozen-lockfile
 until docker exec unumcp-pg pg_isready -U unumcp; do sleep 2; done
 ( cd packages/db && DATABASE_URL="$DB_URL" pnpm exec prisma db push )
+# The API and its workspace packages compile to JavaScript (dist/); building the
+# db package also regenerates the Prisma client.
+pnpm exec turbo run build --filter=@unumcp/api...
 ( cd apps/web && pnpm build )
 # Pre-build the sandbox image (dependencies baked in) so the first test run is fast.
 pnpm --filter @unumcp/sandbox build-image
@@ -65,10 +69,9 @@ After=docker.service
 Requires=docker.service
 [Service]
 WorkingDirectory=$APP/apps/api
-ExecStart=/usr/local/bin/node --env-file=.env -r @swc-node/register src/main.ts
+# -C unumcp-dist makes the workspace packages resolve to their compiled dist/.
+ExecStart=/usr/local/bin/node -C unumcp-dist --env-file=.env dist/main.js
 Environment=NODE_ENV=production
-# systemd sets no HOME for root services; SWC needs one to cache its native addon.
-Environment=HOME=/root
 Restart=always
 RestartSec=5
 [Install]
