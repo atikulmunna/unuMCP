@@ -70,7 +70,7 @@ case "${1:-}" in
   enable-backups)
     bucket="$(ensure_backup_bucket)"
     run_ssm "bash /opt/unumcp/deploy/install-backups.sh $bucket $REGION" ;;
-  backup)  run_ssm "systemctl start unumcp-backup.service && journalctl -u unumcp-backup.service --no-pager -n 1 -o cat" ;;
+  backup)  run_ssm "systemctl start unumcp-backup.service && journalctl -u unumcp-backup.service --no-pager -n 5 -o cat | grep -E 'Backed up|rror'" ;;
   backups) aws s3 ls "s3://$(backup_bucket_name)/postgres/" ;;
   teardown)
     id="$(iid)"
