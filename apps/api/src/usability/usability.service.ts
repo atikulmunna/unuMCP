@@ -210,6 +210,7 @@ export class UsabilityService {
           beforeDescription: toolText.get(f.toolName)?.description ?? "",
           afterDescription: f.afterDescription,
           missesFixed: f.missesFixed,
+          pairedWith: f.pairedWith,
         })),
       }),
       this.prisma.usabilityRun.update({

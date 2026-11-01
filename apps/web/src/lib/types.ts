@@ -106,6 +106,8 @@ export interface UsabilityFix {
   beforeDescription: string;
   afterDescription: string;
   missesFixed: number;
+  /** Tools whose fixes were written with this one, because the agent confused them. */
+  pairedWith: string[];
   status: "proposed" | "accepted" | "rejected" | "stale";
 }
 

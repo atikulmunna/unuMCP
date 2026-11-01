@@ -49,7 +49,10 @@ function defaultAgent(request: string, tools: ToolText[]): Choice {
 }
 
 let script: Script;
+/** The fix requests the check sent in its last propose call. */
+let lastFixRequests: unknown[] = [];
 const resetScript = () => {
+  lastFixRequests = [];
   script = { agent: defaultAgent, fixes: { get_widget: { description: "Returns a single widget, given its id." } } };
 };
 
@@ -79,6 +82,7 @@ const fakeClient: LlmClient = {
       if (script.fixes === "error") throw new Error("provider 529");
       const fixes = script.fixes;
       const requests = JSON.parse(after(user, "(JSON):\n")) as { toolName: string }[];
+      lastFixRequests = requests;
       return reply({ fixes: requests.filter((r) => fixes[r.toolName]).map((r) => ({ tool: r.toolName, ...fixes[r.toolName] })) });
     }
     throw new Error(`Unexpected prompt: ${system.slice(0, 80)}`);
@@ -212,6 +216,45 @@ describe("the usability check", () => {
     expect(result).toMatchObject({ status: "completed", baselineCorrect: 2, fixedCorrect: 3 });
     const fixes = await prisma.usabilityFix.findMany({ where: { runId: result.runId } });
     expect(fixes.map((f) => f.toolName)).toEqual(["get_widget"]);
+  });
+
+  it("rewrites both tools of a confused pair, and offers the two fixes together", async () => {
+    const { projectId } = await projectWithTools();
+    // A single-widget get_widget alone pulls the list question over to it; it
+    // stays put only once list_widgets also says it lists every widget.
+    script.agent = (request, tools) =>
+      request.includes("What widgets") && has(tools, "get_widget", "single") && !has(tools, "list_widgets", "every widget")
+        ? { tool: "get_widget", arguments: {} }
+        : defaultAgent(request, tools);
+    script.fixes = {
+      get_widget: { description: "Returns a single widget, given its id." },
+      list_widgets: { description: "Lists every widget; for one widget by id, use get_widget." },
+    };
+    const result = await service().runCheck(projectId);
+    expect(result).toMatchObject({ status: "completed", baselineCorrect: 3, fixedCorrect: 4 });
+    const fixes = await prisma.usabilityFix.findMany({ where: { runId: result.runId }, orderBy: { toolName: "asc" } });
+    expect(fixes.map(({ toolName, missesFixed, pairedWith }) => ({ toolName, missesFixed, pairedWith }))).toEqual([
+      { toolName: "get_widget", missesFixed: 1, pairedWith: ["list_widgets"] },
+      { toolName: "list_widgets", missesFixed: 0, pairedWith: ["get_widget"] },
+    ]);
+    // The tool picked by mistake was asked about too, with the request it took, and both with their endpoints.
+    expect(lastFixRequests).toEqual([
+      expect.objectContaining({ toolName: "get_widget", endpoint: "GET /widgets/{id}" }),
+      expect.objectContaining({
+        toolName: "list_widgets",
+        endpoint: "GET /widgets",
+        misses: [],
+        chosenInstead: [{ request: "Show me widget 7.", intended: "get_widget" }],
+      }),
+    ]);
+  });
+
+  it("drops a fix for a tool picked by mistake when no fix for the missed tool holds", async () => {
+    const { projectId } = await projectWithTools();
+    script.fixes = { list_widgets: { description: "Lists every widget; for one widget by id, use get_widget." } };
+    const result = await service().runCheck(projectId);
+    expect(result).toMatchObject({ status: "completed", baselineCorrect: 3, fixedCorrect: null });
+    expect(await prisma.usabilityFix.count({ where: { runId: result.runId } })).toBe(0);
   });
 
   it("fails the run when more than a quarter of the tasks get no answer", async () => {

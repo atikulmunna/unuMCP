@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { usabilityScoreLine } from "./usability";
+import { fixImpact, usabilityScoreLine } from "./usability";
 
 const run = { taskCount: 40, answeredCount: 40, baselineCorrect: 33, fixedCorrect: 38 };
 
@@ -29,5 +29,18 @@ describe("usabilityScoreLine", () => {
     expect(usabilityScoreLine({ taskCount: 0, answeredCount: 0, baselineCorrect: 0, fixedCorrect: null })).toBe(
       "Agents chose the right tool for 0 of 0 tasks (0%).",
     );
+  });
+});
+
+describe("fixImpact", () => {
+  it("counts the misses a fix repairs", () => {
+    expect(fixImpact({ missesFixed: 1, pairedWith: [] })).toBe("fixes 1 miss");
+    expect(fixImpact({ missesFixed: 3, pairedWith: [] })).toBe("fixes 3 misses");
+  });
+
+  it("names the fixes it was written with, and drops a zero count", () => {
+    expect(fixImpact({ missesFixed: 1, pairedWith: ["fetch_entries"] })).toBe("fixes 1 miss · goes with fetch_entries");
+    expect(fixImpact({ missesFixed: 0, pairedWith: ["get_entries"] })).toBe("goes with get_entries");
+    expect(fixImpact({ missesFixed: 0, pairedWith: ["a", "b", "c"] })).toBe("goes with a, b and c");
   });
 });

@@ -361,6 +361,8 @@ model UsabilityFix {
   beforeDescription String
   afterDescription  String
   missesFixed       Int
+  /// Tools whose fixes were written with this one, because the agent confused them.
+  pairedWith        String[]           @default([])
   status            UsabilityFixStatus @default(proposed)
   decidedAt         DateTime?
   decidedByUserId   String?

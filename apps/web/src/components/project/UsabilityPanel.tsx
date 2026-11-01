@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Notice, Spinner } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { primaryAction } from "@/lib/status";
-import { usabilityScoreLine } from "@/lib/usability";
+import { fixImpact, usabilityScoreLine } from "@/lib/usability";
 import type { UsabilityFix, UsabilityRun, UsabilityState, UsabilityTask } from "@/lib/types";
 import type { StageProps } from "./shared";
 
@@ -21,7 +21,6 @@ const FIX_TONE: Record<UsabilityFix["status"], "clay" | "ok" | "neutral" | "warn
 };
 
 const messageOf = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
-const misses = (n: number) => `${n} ${n === 1 ? "miss" : "misses"}`;
 
 /**
  * The agent usability check, inside the Tool plan card: run it while the plan
@@ -231,7 +230,7 @@ function FixItem({
         <Badge tone={FIX_TONE[fix.status]} dot={false}>
           {fix.status}
         </Badge>
-        <span className="font-mono text-2xs text-ink-faint">fixes {misses(fix.missesFixed)}</span>
+        <span className="font-mono text-2xs text-ink-faint">{fixImpact(fix)}</span>
       </div>
       <dl className="mt-2 space-y-1 text-sm">
         <div>

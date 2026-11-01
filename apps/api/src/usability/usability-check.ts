@@ -48,6 +48,8 @@ export interface OfferedFix {
   afterName?: string;
   afterDescription: string;
   missesFixed: number;
+  /** Other offered fixes this one was written with, for tools the agent confused it with. */
+  pairedWith: string[];
 }
 
 export interface CheckResult {
@@ -111,19 +113,13 @@ export async function runUsabilityCheck(
   if (proposed.size === 0) return noFixes("No usable fixes were proposed.");
 
   // Pass 1 with every proposed fix; pass 2 with only the survivors, if any were dropped.
+  const pairs = confusedPairs(misses);
   let final = rescore(baseline, await answer(affectedBy(baseline, proposed), proposed));
-  const survivors = survivingFixes(baseline, final, proposed);
+  const survivors = survivingFixes(baseline, final, proposed, pairs);
   if (survivors.size === 0) return noFixes("No proposed fix improved the score without breaking another tool.");
   if (survivors.size < proposed.size) final = rescore(baseline, await answer(affectedBy(baseline, survivors), survivors));
 
-  const offered = [...survivors]
-    .map(([toolName, fix]) => ({
-      toolName,
-      ...(fix.name ? { afterName: fix.name } : {}),
-      afterDescription: fix.description,
-      missesFixed: missesFixedBy(toolName, baseline, final),
-    }))
-    .filter((fix) => fix.missesFixed > 0);
+  const offered = offerFixes(survivors, baseline, final, pairs);
   return offered.length > 0 ? { ...summary, fixedCorrect: countCorrect(final), fixes: offered } : noFixes();
 }
 
@@ -194,21 +190,49 @@ const isMiss = (r: TaskResult) => r.outcome.outcome === "wrong_tool" || r.outcom
 const isCorrect = (r: TaskResult) => r.outcome.outcome === "correct";
 const countCorrect = (results: TaskResult[]) => results.filter(isCorrect).length;
 
-/** One request per tool the agent got wrong, listing what went wrong each time. */
+/**
+ * One request per tool the agent got wrong, listing what went wrong each time,
+ * and one per tool it picked instead, listing the requests it took: rewriting
+ * only one side of a confusion just moves the confusion to the other side.
+ */
 function fixRequests(misses: TaskResult[], byName: Map<string, UsabilityTool>): FixRequest[] {
   const requests = new Map<string, FixRequest>();
+  const requestFor = (tool: UsabilityTool): FixRequest => {
+    const request = requests.get(tool.name) ?? {
+      toolName: tool.name,
+      endpoint: `${tool.method.toUpperCase()} ${tool.path}`,
+      description: tool.description,
+      misses: [],
+    };
+    requests.set(tool.name, request);
+    return request;
+  };
   for (const { task, answer, outcome } of misses) {
     const tool = byName.get(task.toolName)!;
-    const request: FixRequest = requests.get(tool.name) ?? { toolName: tool.name, description: tool.description, misses: [] };
     const picked = outcome.outcome === "wrong_tool" && answer ? byName.get(answer.tool) : undefined;
-    request.misses.push({
+    requestFor(tool).misses.push({
       request: task.prompt,
       ...(picked ? { picked: { name: picked.name, description: picked.description } } : {}),
       ...(outcome.outcome === "bad_args" && outcome.reason ? { problem: outcome.reason } : {}),
     });
-    requests.set(tool.name, request);
+    if (picked) (requestFor(picked).chosenInstead ??= []).push({ request: task.prompt, intended: tool.name });
   }
   return [...requests.values()];
+}
+
+/** Each [tool the agent missed, tool it picked instead]. */
+function confusedPairs(misses: TaskResult[]): [string, string][] {
+  return misses.flatMap((r): [string, string][] =>
+    r.outcome.outcome === "wrong_tool" && r.answer ? [[r.task.toolName, r.answer.tool]] : [],
+  );
+}
+
+/** The tools a tool was confused with, in either direction. */
+function partnersOf(toolName: string, pairs: [string, string][]): string[] {
+  const partners = pairs.flatMap(([missed, picked]) =>
+    missed === toolName ? [picked] : picked === toolName ? [missed] : [],
+  );
+  return [...new Set(partners)].filter((name) => name !== toolName).sort();
 }
 
 /**
@@ -251,24 +275,54 @@ function rescore(baseline: TaskResult[], rescored: TaskResult[]): TaskResult[] {
 
 /**
  * Fixes that turned at least one miss on their tool into a hit and broke no
- * hit. A broken hit is blamed on the changed tool the agent picked instead,
- * or, if it picked an unchanged one, on every changed candidate.
+ * hit. A fix for a tool that was only picked by mistake has no miss of its
+ * own to fix: it survives when it broke no hit and the fix for a tool it was
+ * confused with survives. A broken hit is blamed on the changed tool the agent
+ * picked instead, or, if it picked an unchanged one, on every changed candidate.
  */
-function survivingFixes(baseline: TaskResult[], after: TaskResult[], fixes: Fixes): Fixes {
-  const survivors: Fixes = new Map();
-  for (const [toolName, fix] of fixes) {
-    const fixed = missesFixedBy(toolName, baseline, after);
-    const broke = baseline.some((before, i) => {
+function survivingFixes(baseline: TaskResult[], after: TaskResult[], fixes: Fixes, pairs: [string, string][]): Fixes {
+  const broke = (toolName: string) =>
+    baseline.some((before, i) => {
       const now = after[i]!;
       if (!isCorrect(before) || isCorrect(now)) return false;
       const picked = now.answer?.tool;
       const blamed = picked && fixes.has(picked) ? [picked] : now.candidateNames.filter((n) => fixes.has(n));
       return blamed.includes(toolName);
     });
-    if (fixed > 0 && !broke) survivors.set(toolName, fix);
+  const survivors: Fixes = new Map();
+  for (const [toolName, fix] of fixes) {
+    if (missesFixedBy(toolName, baseline, after) > 0 && !broke(toolName)) survivors.set(toolName, fix);
+  }
+  const fixing = new Set(survivors.keys());
+  for (const [toolName, fix] of fixes) {
+    if (survivors.has(toolName) || hadMisses(toolName, baseline) || broke(toolName)) continue;
+    if (partnersOf(toolName, pairs).some((p) => fixing.has(p))) survivors.set(toolName, fix);
   }
   return survivors;
 }
+
+/**
+ * The surviving fixes that still fix a miss after the final re-score, and the
+ * fixes written with them for the tools they were confused with.
+ */
+function offerFixes(survivors: Fixes, baseline: TaskResult[], final: TaskResult[], pairs: [string, string][]): OfferedFix[] {
+  const fixing = new Set([...survivors.keys()].filter((name) => missesFixedBy(name, baseline, final) > 0));
+  const offered = new Set(
+    [...survivors.keys()].filter((name) => fixing.has(name) || partnersOf(name, pairs).some((p) => fixing.has(p))),
+  );
+  return [...survivors]
+    .filter(([toolName]) => offered.has(toolName))
+    .map(([toolName, fix]) => ({
+      toolName,
+      ...(fix.name ? { afterName: fix.name } : {}),
+      afterDescription: fix.description,
+      missesFixed: missesFixedBy(toolName, baseline, final),
+      pairedWith: partnersOf(toolName, pairs).filter((p) => offered.has(p)),
+    }));
+}
+
+const hadMisses = (toolName: string, baseline: TaskResult[]) =>
+  baseline.some((r) => r.task.toolName === toolName && isMiss(r));
 
 function missesFixedBy(toolName: string, baseline: TaskResult[], after: TaskResult[]): number {
   return baseline.filter((before, i) => before.task.toolName === toolName && isMiss(before) && isCorrect(after[i]!)).length;

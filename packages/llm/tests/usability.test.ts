@@ -93,6 +93,7 @@ describe("chooseTool", () => {
 describe("proposeFixes", () => {
   const miss = {
     toolName: "get_widget",
+    endpoint: "GET /widgets/{id}",
     description: "Returns one widget by id.",
     misses: [
       { request: "Show me widget w-7.", picked: { name: "list_widgets", description: "Lists widgets." } },
@@ -112,6 +113,30 @@ describe("proposeFixes", () => {
     expect(result.value.get("get_widget")).toEqual({
       description: "Returns a single widget, given its id. To list several, use list_widgets.",
     });
+  });
+
+  it("sends each tool's endpoint and the requests wrongly sent to it, so a confused pair is rewritten together", async () => {
+    const picked = {
+      toolName: "list_widgets",
+      endpoint: "GET /widgets",
+      description: "Lists widgets.",
+      misses: [],
+      chosenInstead: [{ request: "Show me widget w-7.", intended: "get_widget" }],
+    };
+    const { client, seen } = fakeClient(
+      JSON.stringify({
+        fixes: [
+          { tool: "get_widget", description: "Returns one widget, given its id." },
+          { tool: "list_widgets", description: "Lists every widget; for one widget by id, use get_widget." },
+        ],
+      }),
+    );
+    const fixes = (await proposeFixes(client, [miss, picked])).value;
+    const sent = JSON.parse(seen[0]!.messages[1]!.content.split("(JSON):\n")[1]!);
+    expect(sent[0]).toMatchObject({ toolName: "get_widget", endpoint: "GET /widgets/{id}" });
+    expect(sent[1]).toMatchObject({ toolName: "list_widgets", chosenInstead: [{ request: "Show me widget w-7.", intended: "get_widget" }] });
+    expect(seen[0]!.messages[0]!.content).toMatch(/rewrite every one of them/);
+    expect([...fixes.keys()]).toEqual(["get_widget", "list_widgets"]);
   });
 
   it("keeps a well-formed new name and drops a malformed or unchanged one", async () => {

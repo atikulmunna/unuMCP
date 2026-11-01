@@ -28,10 +28,19 @@ export interface Miss {
   problem?: string;
 }
 
+/** A request meant for another tool that the agent sent to this one. */
+export interface ChosenInstead {
+  request: string;
+  intended: string;
+}
+
 export interface FixRequest {
   toolName: string;
+  /** The HTTP call the tool makes ("GET /entries/pending"), the ground truth for how look-alikes differ. */
+  endpoint: string;
   description: string;
   misses: Miss[];
+  chosenInstead?: ChosenInstead[];
 }
 
 /** Revised text for one tool; `name` only when the current name itself misleads. */
@@ -73,10 +82,11 @@ const AGENT_PROMPT = [
 
 const FIX_PROMPT = [
   "You improve MCP tool descriptions so that an AI agent picks the right tool and fills its arguments correctly.",
-  "For each tool below, an agent got some requests wrong: it picked another tool, or passed wrong arguments.",
+  "Each tool below confused an agent. `misses` are requests meant for that tool that the agent got wrong (it picked another tool, or passed wrong arguments); `chosenInstead` are requests meant for another tool that the agent sent to this one.",
+  "Tools that were confused with each other are all listed: rewrite every one of them, so that each says how it differs from the others.",
   "Rules for each revised description:",
-  "- 1 to 3 sentences. Say what the tool does, when to use it instead of the tool the agent picked, and how to fill any argument it got wrong.",
-  "- Stay accurate: never invent capabilities or parameters.",
+  "- 1 to 3 sentences. Say what the tool does, how it differs from the tools it was confused with, and how to fill any argument the agent got wrong.",
+  "- Stay accurate: base every difference on the tool's `endpoint` and inputs, and never invent capabilities or parameters.",
   "- Never include secrets, tokens, or example credentials.",
   "- Suggest a new snake_case `name` ONLY if the current name itself is misleading; otherwise leave `name` out.",
   `- ${UNTRUSTED}`,

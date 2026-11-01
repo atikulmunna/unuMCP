@@ -28,3 +28,23 @@ export function usabilityScoreLine(run: ScoreCounts): string {
   }
   return parts.join(" ");
 }
+
+interface FixCounts {
+  missesFixed: number;
+  pairedWith: string[];
+}
+
+/**
+ * "fixes 1 miss", "goes with fetch_entries", or both: what a suggested fix
+ * does, for its card. A fix for a tool the agent only picked by mistake fixes
+ * no miss itself; it goes with the fix for the tool it was confused with.
+ */
+export function fixImpact(fix: FixCounts): string {
+  const parts: string[] = [];
+  if (fix.missesFixed > 0) parts.push(`fixes ${fix.missesFixed} ${fix.missesFixed === 1 ? "miss" : "misses"}`);
+  if (fix.pairedWith.length > 0) parts.push(`goes with ${listOf(fix.pairedWith)}`);
+  return parts.join(" · ");
+}
+
+const listOf = (names: string[]) =>
+  names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;

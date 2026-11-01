@@ -43,7 +43,7 @@ describe("LlmService usability calls", () => {
   it("traces proposed fixes", async () => {
     const { svc, record } = traced(reply(JSON.stringify({ fixes: [{ tool: "get_widget", description: "Returns a single widget." }] })));
     const result = await svc.proposeUsabilityFixes(
-      [{ toolName: "get_widget", description: "Returns one widget.", misses: [{ request: "Show widget 7." }] }],
+      [{ toolName: "get_widget", endpoint: "GET /widgets/{id}", description: "Returns one widget.", misses: [{ request: "Show widget 7." }] }],
       { projectId: "p1" },
     );
     expect(result.value.size).toBe(1);
