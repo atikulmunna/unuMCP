@@ -3,7 +3,7 @@ import type { LlmClient } from "@unumcp/llm";
 import { LlmService } from "../src/llm/llm.service";
 import type { LlmTraceEntry, LlmTraceService } from "../src/llm/llm-trace.service";
 
-const tool = { name: "get_widget", description: "Returns one widget.", inputSchema: { type: "object" } };
+const tool = { name: "get_widget", description: "Returns one widget.", inputSchema: { type: "object" }, endpoint: "GET /widgets/{id}" };
 
 function reply(text: string): LlmClient {
   return {

@@ -6,7 +6,7 @@ import {
   type TaskOutcome,
   type UsabilityTool,
 } from "@unumcp/usability";
-import type { ChosenCall, FixRequest, ProposedFix, ToolView, UsabilityCall, WrittenTask } from "@unumcp/llm";
+import type { ChosenCall, FixRequest, ProposedFix, TaskTool, ToolView, UsabilityCall, WrittenTask } from "@unumcp/llm";
 import { chunk, mapWithConcurrency } from "../common/concurrency";
 
 const TASKS_PER_CALL = 10;
@@ -15,7 +15,7 @@ const NO_ANSWER_LIMIT = 0.25;
 
 /** The LLM calls a check makes, passed in so the loop knows nothing of the provider. */
 export interface CheckCalls {
-  writeTasks(tools: ToolView[]): Promise<UsabilityCall<WrittenTask[]>>;
+  writeTasks(tools: TaskTool[]): Promise<UsabilityCall<WrittenTask[]>>;
   chooseTool(request: string, candidates: ToolView[]): Promise<UsabilityCall<ChosenCall | null>>;
   proposeFixes(requests: FixRequest[]): Promise<UsabilityCall<Map<string, ProposedFix>>>;
 }
@@ -142,7 +142,9 @@ function metered(calls: CheckCalls, maxCalls: number, meter: Meter): Calls {
 
 async function writeAllTasks(targets: UsabilityTool[], spend: Calls, concurrency: number): Promise<Task[]> {
   const batches = await mapWithConcurrency(chunk(targets, TASKS_PER_CALL), concurrency, (batch) =>
-    spend.writeTasks(batch.map((t) => viewOf(t))),
+    // The writer also sees each endpoint, so a task for one of two look-alikes asks for
+    // what that tool really does; the agent answering it still sees only `viewOf`.
+    spend.writeTasks(batch.map((t) => ({ ...viewOf(t), endpoint: endpointOf(t) }))),
   );
   return batches.flat().map((t) => ({ toolName: t.toolName, prompt: t.prompt, expectedArgs: t.expectedArgs }));
 }
@@ -175,6 +177,9 @@ async function answerAll(
   return results;
 }
 
+/** The HTTP call a tool makes, as the LLM sees it: "GET /entries/pending". */
+const endpointOf = (tool: UsabilityTool) => `${tool.method.toUpperCase()} ${tool.path}`;
+
 /** What the agent sees of a tool, with a proposed fix applied. */
 function viewOf(tool: UsabilityTool, fix?: ProposedFix): ToolView {
   return { name: fix?.name ?? tool.name, description: fix?.description ?? tool.description, inputSchema: tool.inputSchema };
@@ -200,7 +205,7 @@ function fixRequests(misses: TaskResult[], byName: Map<string, UsabilityTool>): 
   const requestFor = (tool: UsabilityTool): FixRequest => {
     const request = requests.get(tool.name) ?? {
       toolName: tool.name,
-      endpoint: `${tool.method.toUpperCase()} ${tool.path}`,
+      endpoint: endpointOf(tool),
       description: tool.description,
       misses: [],
     };

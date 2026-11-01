@@ -12,6 +12,7 @@ import {
   type LlmClient,
   type ProposedFix,
   type ProposedRisk,
+  type TaskTool,
   type RepairInput,
   type RepairResult,
   type ToolProposalInput,
@@ -142,7 +143,7 @@ export class LlmService {
   }
 
   /** Usability check: one realistic request per tool (one call). */
-  writeUsabilityTasks(tools: ToolView[], ctx?: LlmTraceContext): Promise<UsabilityCall<WrittenTask[]>> {
+  writeUsabilityTasks(tools: TaskTool[], ctx?: LlmTraceContext): Promise<UsabilityCall<WrittenTask[]>> {
     return this.tracedCall(
       ctx,
       "write_usability_tasks",

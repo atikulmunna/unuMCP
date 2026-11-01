@@ -51,8 +51,13 @@ function defaultAgent(request: string, tools: ToolText[]): Choice {
 let script: Script;
 /** The fix requests the check sent in its last propose call. */
 let lastFixRequests: unknown[] = [];
+/** Every tool view the task writer and the agent were shown. */
+let writerViews: object[] = [];
+let agentViews: object[] = [];
 const resetScript = () => {
   lastFixRequests = [];
+  writerViews = [];
+  agentViews = [];
   script = { agent: defaultAgent, fixes: { get_widget: { description: "Returns a single widget, given its id." } } };
 };
 
@@ -70,10 +75,12 @@ const fakeClient: LlmClient = {
     if (system.includes("concise, accurate descriptions")) return reply({ descriptions: [] });
     if (system.includes("You write realistic requests")) {
       const tools = JSON.parse(after(user, "Tools (JSON):\n")) as ToolText[];
+      writerViews.push(...tools);
       return reply({ tasks: tools.map((t) => ({ tool: t.name, request: TASKS[t.name]!.request, arguments: TASKS[t.name]!.args })) });
     }
     if (system.includes("You are an AI assistant")) {
       const tools = JSON.parse(after(user, "Tools (JSON):\n").split("\n\nUser request:\n")[0]!) as ToolText[];
+      agentViews.push(...tools);
       const choice = script.agent(after(user, "User request:\n"), tools);
       if (choice === "error") throw new Error("provider 529");
       return reply(choice === "unreadable" ? "I would use the first one." : choice);
@@ -247,6 +254,15 @@ describe("the usability check", () => {
         chosenInstead: [{ request: "Show me widget 7.", intended: "get_widget" }],
       }),
     ]);
+  });
+
+  it("shows the task writer each tool's endpoint, and the agent only what an MCP client sees", async () => {
+    const { projectId } = await projectWithTools();
+    await service().runCheck(projectId);
+    expect(writerViews).toContainEqual(expect.objectContaining({ name: "get_widget", endpoint: "GET /widgets/{id}" }));
+    expect(writerViews.every((v) => "endpoint" in v)).toBe(true);
+    expect(agentViews.length).toBeGreaterThan(0);
+    expect(agentViews.every((v) => Object.keys(v).sort().join() === "description,inputSchema,name")).toBe(true);
   });
 
   it("drops a fix for a tool picked by mistake when no fix for the missed tool holds", async () => {

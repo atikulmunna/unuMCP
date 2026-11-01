@@ -8,6 +8,12 @@ export interface ToolView {
   inputSchema: unknown;
 }
 
+/** What the task writer sees of a tool: the agent's view plus the endpoint it calls. */
+export interface TaskTool extends ToolView {
+  /** The HTTP call the tool makes ("GET /entries/pending"), the ground truth for what it does. */
+  endpoint: string;
+}
+
 /** A user request written for one tool, with the argument values it states. */
 export interface WrittenTask {
   toolName: string;
@@ -63,6 +69,7 @@ const UNTRUSTED =
 const TASK_PROMPT = [
   "You write realistic requests a user might give an AI assistant that has these API tools.",
   "For each tool, write ONE request that this tool, and no other, fulfils.",
+  "Each tool's `endpoint` is the HTTP call it makes, so it shows what the tool really does: when tools look alike, write a request that only this tool's endpoint fulfils.",
   "Rules:",
   "- Plain language a user would actually type. Never mention the tool's name or the endpoint path.",
   "- Use concrete, realistic values (names, ids, dates), and state every required input.",
@@ -102,7 +109,7 @@ const TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/;
  * own tool is dropped: it would give the answer away. Throws when the output
  * is not JSON, since a check has nothing to measure without tasks.
  */
-export async function writeTasks(client: LlmClient, tools: ToolView[]): Promise<UsabilityCall<WrittenTask[]>> {
+export async function writeTasks(client: LlmClient, tools: TaskTool[]): Promise<UsabilityCall<WrittenTask[]>> {
   const completion = await client.complete({
     temperature: 0,
     maxTokens: Math.min(300 * tools.length, 4000),

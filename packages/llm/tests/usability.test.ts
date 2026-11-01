@@ -16,8 +16,8 @@ function fakeClient(text: string | Error): { client: LlmClient; seen: LlmRequest
 }
 
 const schema = { type: "object", properties: { id: { type: "string" } }, required: ["id"] };
-const getWidget = { name: "get_widget", description: "Returns one widget by id.", inputSchema: schema };
-const listWidgets = { name: "list_widgets", description: "Lists widgets.", inputSchema: { type: "object", properties: {} } };
+const getWidget = { name: "get_widget", description: "Returns one widget by id.", inputSchema: schema, endpoint: "GET /widgets/{id}" };
+const listWidgets = { name: "list_widgets", description: "Lists widgets.", inputSchema: { type: "object", properties: {} }, endpoint: "GET /widgets" };
 
 function expectGuarded(request: LlmRequest) {
   expect(request.temperature).toBe(0);
@@ -39,6 +39,9 @@ describe("writeTasks", () => {
     expect(seen).toHaveLength(1);
     expectGuarded(seen[0]!);
     expect(seen[0]!.messages[1]!.content).toContain("get_widget");
+    // The writer sees each endpoint, and is told to write a request only that one fulfils.
+    expect(seen[0]!.messages[1]!.content).toContain("GET /widgets/{id}");
+    expect(seen[0]!.messages[0]!.content).toMatch(/only this tool's endpoint fulfils/);
     expect(result.value).toEqual([
       { toolName: "get_widget", prompt: "Show me widget w-7.", expectedArgs: { id: "w-7" } },
       { toolName: "list_widgets", prompt: "What widgets do we have?", expectedArgs: {} },
