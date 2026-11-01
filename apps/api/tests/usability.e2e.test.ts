@@ -246,7 +246,11 @@ describe("the usability check", () => {
     ]);
     // The tool picked by mistake was asked about too, with the request it took, and both with their endpoints.
     expect(lastFixRequests).toEqual([
-      expect.objectContaining({ toolName: "get_widget", endpoint: "GET /widgets/{id}" }),
+      expect.objectContaining({
+        toolName: "get_widget",
+        endpoint: "GET /widgets/{id}",
+        inputSchema: expect.objectContaining({ required: ["id"] }),
+      }),
       expect.objectContaining({
         toolName: "list_widgets",
         endpoint: "GET /widgets",

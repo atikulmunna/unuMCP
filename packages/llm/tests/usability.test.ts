@@ -98,6 +98,7 @@ describe("proposeFixes", () => {
     toolName: "get_widget",
     endpoint: "GET /widgets/{id}",
     description: "Returns one widget by id.",
+    inputSchema: schema,
     misses: [
       { request: "Show me widget w-7.", picked: { name: "list_widgets", description: "Lists widgets." } },
       { request: "Get widget 9.", problem: "id should be \"9\", got null." },
@@ -123,6 +124,7 @@ describe("proposeFixes", () => {
       toolName: "list_widgets",
       endpoint: "GET /widgets",
       description: "Lists widgets.",
+      inputSchema: { type: "object", properties: {} },
       misses: [],
       chosenInstead: [{ request: "Show me widget w-7.", intended: "get_widget" }],
     };
@@ -136,7 +138,7 @@ describe("proposeFixes", () => {
     );
     const fixes = (await proposeFixes(client, [miss, picked])).value;
     const sent = JSON.parse(seen[0]!.messages[1]!.content.split("(JSON):\n")[1]!);
-    expect(sent[0]).toMatchObject({ toolName: "get_widget", endpoint: "GET /widgets/{id}" });
+    expect(sent[0]).toMatchObject({ toolName: "get_widget", endpoint: "GET /widgets/{id}", inputSchema: schema });
     expect(sent[1]).toMatchObject({ toolName: "list_widgets", chosenInstead: [{ request: "Show me widget w-7.", intended: "get_widget" }] });
     expect(seen[0]!.messages[0]!.content).toMatch(/rewrite every one of them/);
     expect([...fixes.keys()]).toEqual(["get_widget", "list_widgets"]);

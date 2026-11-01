@@ -207,6 +207,7 @@ function fixRequests(misses: TaskResult[], byName: Map<string, UsabilityTool>): 
       toolName: tool.name,
       endpoint: endpointOf(tool),
       description: tool.description,
+      inputSchema: tool.inputSchema,
       misses: [],
     };
     requests.set(tool.name, request);

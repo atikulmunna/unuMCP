@@ -45,6 +45,8 @@ export interface FixRequest {
   /** The HTTP call the tool makes ("GET /entries/pending"), the ground truth for how look-alikes differ. */
   endpoint: string;
   description: string;
+  /** The tool's inputs, so a new description can say what it needs (a required customerId scopes it to one customer). */
+  inputSchema: unknown;
   misses: Miss[];
   chosenInstead?: ChosenInstead[];
 }
@@ -93,7 +95,7 @@ const FIX_PROMPT = [
   "Tools that were confused with each other are all listed: rewrite every one of them, so that each says how it differs from the others.",
   "Rules for each revised description:",
   "- 1 to 3 sentences. Say what the tool does, how it differs from the tools it was confused with, and how to fill any argument the agent got wrong.",
-  "- Stay accurate: base every difference on the tool's `endpoint` and inputs, and never invent capabilities or parameters.",
+  "- Stay accurate: base every difference on the tool's `endpoint` and `inputSchema`, and never invent capabilities or parameters. A path parameter such as {customerId} scopes the tool to that one item, so say so.",
   "- Never include secrets, tokens, or example credentials.",
   "- Suggest a new snake_case `name` ONLY if the current name itself is misleading; otherwise leave `name` out.",
   `- ${UNTRUSTED}`,
